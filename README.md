@@ -60,4 +60,4 @@ This checkout is independent of the existing published Site. Pushing to GitHub d
 
 ## Playing
 
-Open the playable site, tap Play, then draw each boat's route to a matching dock. Once it unloads, draw a route back out to sea. Avoid boat collisions. This recreation supports Treasure Island; see `docs/FIDELITY_AUDIT.md` for what was verified against the original app and what remains approximate.
+Open the playable site, tap Play, then draw each boat's route to a matching dock. Once it unloads, draw a route back out to sea. Avoid boat collisions. This recreation supports Treasure Island; see `docs/FIDELITY_AUDIT.md` for what was verified against the original app and what remains approximate. If the browser blocks storage or runs out of space, the current game remains playable and reports which data could not be saved.

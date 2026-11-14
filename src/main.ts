@@ -31,22 +31,38 @@ const settings = $<HTMLDialogElement>('#settings');
 const musicSlider = $<HTMLInputElement>('#music-volume');
 const effectsSlider = $<HTMLInputElement>('#effects-volume');
 const autoDocking = $<HTMLInputElement>('#auto-docking');
+// Accessing localStorage itself can throw, not just its methods. Keep the
+// game usable and let persistence helpers report failed writes accurately.
+function storageUnavailable() {
+  document.querySelectorAll<HTMLElement>('[data-storage-warning]').forEach(element => { element.hidden = false; });
+}
+const localStore: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> = {
+  getItem(key) { try { return window.localStorage.getItem(key); } catch (error) { storageUnavailable(); throw error; } },
+  setItem(key, value) { try { window.localStorage.setItem(key, value); } catch (error) { storageUnavailable(); throw error; } },
+  removeItem(key) { try { window.localStorage.removeItem(key); } catch (error) { storageUnavailable(); throw error; } },
+};
+function readPreference(key: string): string | null {
+  try { return localStore.getItem(key); } catch { return null; }
+}
+function writePreference(key: string, value: string): void {
+  try { localStore.setItem(key, value); } catch { /* The current setting still works for this visit. */ }
+}
 let assets: GameAssets | undefined;
 let controller: GameController | undefined;
 let soundtrack: HTMLAudioElement | undefined;
 let soundtrackUrl: string | undefined;
-let muted = localStorage.getItem('harbor-muted') === '1';
-let effectsMuted = localStorage.getItem('harbor-effects-muted') === '1';
+let muted = readPreference('harbor-muted') === '1';
+let effectsMuted = readPreference('harbor-effects-muted') === '1';
 function savedVolume(key: string, fallback: number): number {
-  const value = localStorage.getItem(key);
+  const value = readPreference(key);
   if (value === null) return fallback;
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : fallback;
 }
 let musicVolume = savedVolume('harbor-music-volume', .55);
 let effectsVolume = savedVolume('harbor-effects-volume', .65);
-let autoDockEnabled = localStorage.getItem('harbor-auto-dock') !== '0';
-let shiftRecorder = new ShiftRecorder();
+let autoDockEnabled = readPreference('harbor-auto-dock') !== '0';
+let shiftRecorder = new ShiftRecorder(localStore);
 let currentShiftId = '';
 let savedShift: ShiftSave | null = null;
 let saveProblem = false;
@@ -55,7 +71,7 @@ const newShiftId = () => typeof crypto.randomUUID === 'function'
 function refreshContinue() {
   if (!assets) { savedShift = null; continueShift.hidden = true; return; }
   try {
-    const found = readShiftSave(saveLevelForAssets(assets.levelText));
+    const found = readShiftSave(saveLevelForAssets(assets.levelText), localStore);
     savedShift = found?.pressure && found.activePacing ? found : null;
   } catch { savedShift = null; }
   continueShift.hidden = !savedShift;
@@ -66,7 +82,7 @@ function refreshContinue() {
 function persistActiveShift(): boolean {
   if (!controller || !assets || ended || !currentShiftId) return false;
   const snapshot = controller.snapshot(currentShiftId);
-  const saved = snapshot !== null && writeShiftSave(snapshot, saveLevelForAssets(assets.levelText));
+  const saved = snapshot !== null && writeShiftSave(snapshot, saveLevelForAssets(assets.levelText), localStore);
   saveProblem = !saved;
   return saved;
 }
@@ -75,7 +91,7 @@ let ended = false;
 let installPrompt: (Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: string }> }) | undefined;
 
 function setStatus(text: string) { status.textContent = text; }
-function showStats(stats: ShiftStats = readShiftStats()) {
+function showStats(stats: ShiftStats = readShiftStats(localStore)) {
   $<HTMLElement>('#shift-stats').hidden = stats.shifts === 0;
   $<HTMLElement>('#best-shift').textContent = String(stats.best);
   $<HTMLElement>('#avg-shift').textContent = String(stats.shifts ? Math.floor(stats.totalCargo / stats.shifts) : 0);
@@ -195,11 +211,11 @@ function begin(restoreShift: ShiftSave | null = null) {
   soundtrack.volume = musicVolume;
   syncMute();
   void soundtrack.play().catch(() => { /* A later tap may be needed on some browsers. */ });
-  shiftRecorder = new ShiftRecorder(undefined, currentShiftId);
+  shiftRecorder = new ShiftRecorder(localStore, currentShiftId);
   controller = createGame(canvas, assets, {
     onScore: n => { score.textContent = String(n); },
     onGameOver: n => {
-      clearShiftSave();
+      clearShiftSave(localStore);
       savedShift = null;
       const stats = shiftRecorder.complete(n);
       showStats(stats);
@@ -227,7 +243,7 @@ choose.addEventListener('click', () => input.click());
 change.addEventListener('click', () => input.click());
 play.addEventListener('click', () => {
   if (savedShift && !window.confirm('Start a new shift? Your saved shift will be replaced.')) return;
-  clearShiftSave(); savedShift = null;
+  clearShiftSave(localStore); savedShift = null;
   begin();
 });
 continueShift.addEventListener('click', () => { if (savedShift) begin(savedShift); });
@@ -243,8 +259,8 @@ restartButton.addEventListener('click', () => {
   overlay.hidden = true;
   isPaused = false;
   ended = false;
-  clearShiftSave(); savedShift = null; currentShiftId = newShiftId();
-  shiftRecorder = new ShiftRecorder(undefined, currentShiftId);
+  clearShiftSave(localStore); savedShift = null; currentShiftId = newShiftId();
+  shiftRecorder = new ShiftRecorder(localStore, currentShiftId);
   controller?.restart();
   void soundtrack?.play().catch(() => {});
 });
@@ -261,7 +277,7 @@ $<HTMLButtonElement>('#home').addEventListener('click', () => {
   if (saveProblem) setStatus('Your shift could not be saved on this device.');
 });
 muteButton.addEventListener('click', () => {
-  muted = !muted; localStorage.setItem('harbor-muted', muted ? '1' : '0'); syncMute();
+  muted = !muted; writePreference('harbor-muted', muted ? '1' : '0'); syncMute();
   if (!muted && !isPaused && !ended) void soundtrack?.play().catch(() => {});
 });
 const effectsButton = $<HTMLButtonElement>('#effects');
@@ -271,7 +287,7 @@ function syncEffects() {
   effectsButton.setAttribute('aria-label', effectsButton.title);
   controller?.setEffectsVolume(effectsMuted ? 0 : effectsVolume);
 }
-effectsButton.addEventListener('click', () => { effectsMuted = !effectsMuted; localStorage.setItem('harbor-effects-muted', effectsMuted ? '1' : '0'); syncEffects(); });
+effectsButton.addEventListener('click', () => { effectsMuted = !effectsMuted; writePreference('harbor-effects-muted', effectsMuted ? '1' : '0'); syncEffects(); });
 syncEffects();
 function showSettings() {
   if (controller && !isPaused && !ended) showPause('Paused', 'The harbor can wait a moment.');
@@ -287,18 +303,18 @@ function syncVolumes() {
 }
 musicSlider.addEventListener('input', () => {
   musicVolume = Math.max(0, Math.min(100, Number(musicSlider.value))) / 100;
-  localStorage.setItem('harbor-music-volume', String(musicVolume));
+  writePreference('harbor-music-volume', String(musicVolume));
   syncVolumes();
 });
 effectsSlider.addEventListener('input', () => {
   effectsVolume = Math.max(0, Math.min(100, Number(effectsSlider.value))) / 100;
-  localStorage.setItem('harbor-effects-volume', String(effectsVolume));
+  writePreference('harbor-effects-volume', String(effectsVolume));
   syncVolumes();
 });
 autoDocking.checked = autoDockEnabled;
 autoDocking.addEventListener('change', () => {
   autoDockEnabled = autoDocking.checked;
-  localStorage.setItem('harbor-auto-dock', autoDockEnabled ? '1' : '0');
+  writePreference('harbor-auto-dock', autoDockEnabled ? '1' : '0');
   controller?.setAutoDock(autoDockEnabled);
 });
 $<HTMLButtonElement>('#welcome-settings').addEventListener('click', showSettings);

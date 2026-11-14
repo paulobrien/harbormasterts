@@ -21,7 +21,7 @@
           <div id="status" class="status" role="status">Getting the harbor ready…</div>
           <div class="actions"><button type="button" id="choose-label" class="button button-primary" hidden><span aria-hidden="true">⚓</span> Add game files</button><input id="file-input" type="file" accept=".ipa,.zip,application/octet-stream,application/zip" hidden>
           <button id="continue-shift" class="button button-primary" hidden>▶ &nbsp; Continue shift</button><button id="play" class="button button-primary" hidden>▶ &nbsp; Play Treasure Island</button><button id="install" class="button button-outline" hidden>Install app</button><button id="welcome-settings" class="button button-outline">⚙ &nbsp; Settings</button></div>
-          <div id="shift-stats" class="shift-stats" aria-label="Treasure Island statistics" hidden><div><strong id="best-shift">0</strong><span>BEST SHIFT</span></div><div><strong id="avg-shift">0</strong><span>AVERAGE SHIFT</span></div><div><strong id="shifts-worked">0</strong><span>SHIFTS WORKED</span></div><div><strong id="total-cargo">0</strong><span>CARGO RECEIVED</span></div></div><p class="privacy">Your scores and progress are saved on this device.</p>
+          <div id="shift-stats" class="shift-stats" aria-label="Treasure Island statistics" hidden><div><strong id="best-shift">0</strong><span>BEST SHIFT</span></div><div><strong id="avg-shift">0</strong><span>AVERAGE SHIFT</span></div><div><strong id="shifts-worked">0</strong><span>SHIFTS WORKED</span></div><div><strong id="total-cargo">0</strong><span>CARGO RECEIVED</span></div></div><p class="privacy">Scores and progress stay on this device when storage is available.</p><p class="privacy" data-storage-warning role="status" hidden>Settings, scores and shift progress cannot be saved on this device.</p>
           <button id="change-file" class="text-button" hidden>Choose a different game file</button>
         </div>
         <div class="footer"><span>MADE FOR A LITTLE MORE PLAY</span><span>✦ &nbsp; FAIR WINDS &amp; FOLLOWING SEAS</span></div>
@@ -40,6 +40,7 @@
       <label class="volume-label" for="effects-volume"><span>Sound effects volume</span><output id="effects-value" for="effects-volume">65%</output></label><input id="effects-volume" class="volume-slider" type="range" min="0" max="100" step="1" value="65">
       <label class="volume-label" for="auto-docking"><span>Auto Docking</span><input id="auto-docking" type="checkbox" checked></label>
       <p class="settings-note">When enabled, boats without a route can automatically dock when close to a matching berth. Music and sound effects can also be muted separately during a shift.</p>
+      <p class="settings-note" data-storage-warning role="status" hidden>Changes will work for this visit, but cannot be saved on this device.</p>
       <button class="button button-primary settings-done">Done</button>
     </form>
   </dialog>
