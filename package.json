@@ -6,12 +6,12 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "preview": "vite preview",
-    "build": "npm run typecheck && vite build && node tools/version-shell.mjs",
+    "build": "npm run typecheck && vite build && node tools/copy-public.mjs && node tools/version-shell.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.e2e.json",
     "test": "node tools/run-tests.mjs",
     "test:e2e": "playwright test",
     "stage:assets": "node tools/stage-assets.mjs",
-    "build:playable": "npm run stage:assets && npm run build"
+    "build:playable": "npm run build && npm run stage:assets && node tools/include-game-bundle.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.2"
