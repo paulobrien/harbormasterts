@@ -29,6 +29,8 @@ npm run test:e2e
 
 The project-local [Playwright best-practices skill](.agents/skills/playwright-best-practices/SKILL.md) is included to guide browser-test work. It comes from [currents-dev/playwright-best-practices-skill](https://github.com/currents-dev/playwright-best-practices-skill) at revision `0b75b5835a87de1fdd202ba965f3bc5a27738fdf`; its MIT licence is included with the skill.
 
+The project-local [Hallmark skill](.agents/skills/hallmark/SKILL.md) supports design audits and explicitly requested redesigns. It comes from [Nutlope/hallmark](https://github.com/Nutlope/hallmark) at revision `04977e15f3dfd6ee4b74c887dac3eb52665d6c92`; its MIT licence is included with the skill.
+
 To create the local bundle and start the development server:
 
 ```sh
