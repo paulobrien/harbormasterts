@@ -1,5 +1,5 @@
 import { cp } from 'node:fs/promises';
-import { relative, resolve, sep } from 'node:path';
+import { relative, resolve, sep, toNamespacedPath } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /** Copy the app shell, never the separately staged game bundle. */
@@ -9,7 +9,8 @@ export async function copyPublic(root = process.cwd()) {
   await cp(source, destination, {
     recursive: true,
     filter(path) {
-      return relative(source, path).split(sep)[0].toLowerCase() !== 'game';
+      // Node 20 on Windows may provide a namespaced path to the filter.
+      return relative(toNamespacedPath(source), toNamespacedPath(path)).split(sep)[0].toLowerCase() !== 'game';
     },
   });
 }
