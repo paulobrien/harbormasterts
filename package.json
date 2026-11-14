@@ -1,0 +1,24 @@
+{
+  "name": "harbor-master-ts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node tools/run-tests.mjs",
+    "stage:assets": "node tools/stage-assets.mjs",
+    "build:playable": "npm run stage:assets && npm run build"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

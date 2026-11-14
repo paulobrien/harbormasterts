@@ -1,0 +1,62 @@
+// Route-editing regressions using synthetic game data and a mock canvas.
+import assert from 'node:assert/strict';
+import { build } from 'esbuild';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const dir=await mkdtemp(join(tmpdir(),'harbor-live-route-'));
+try {
+  let source=await readFile('src/game.ts','utf8');
+  const marker='  reset();\n  render();\n  return {';
+  assert.ok(source.includes(marker));
+  source=source.replace(marker,`  reset();\n  render();\n  (globalThis as any).__live={level,update,reset,stopSpawns:()=>{pressure={...pressure,phase:0,threshold:1e9,spawnElapsed:-999999}},push:(s:any)=>{ships.push(s);nextId=Math.max(nextId,s.id+1)},get:()=>ships};\n  return {`);
+  const outfile=join(dir,'game.cjs');
+  await build({stdin:{contents:source,sourcefile:'game.ts',resolveDir:resolve('src'),loader:'ts'},outfile,bundle:true,platform:'node',format:'cjs',logLevel:'silent'});
+  const {createGame}=await import(pathToFileURL(outfile).href);
+  const handlers={};
+  const context=new Proxy({}, {get:()=>()=>{},set:()=>true});
+  const canvas={style:{},getContext:()=>context,addEventListener(n,f){handlers[n]=f},removeEventListener(){},setPointerCapture(){},hasPointerCapture(){return false},getBoundingClientRect:()=>({left:0,top:0,width:1024,height:768})};
+  globalThis.requestAnimationFrame=()=>1;globalThis.cancelAnimationFrame=()=>{};
+  const image={complete:true,naturalWidth:1024};
+  const levelText='mapSize 1024 768\ndockElement\n900 68\n0\n0\n1\n1\n0\n';
+  const game=createGame(canvas,{background:image,sprites:image,music:new Blob(),sounds:{},levelText});
+  game.start();const api=globalThis.__live;
+  const reset=()=>{api.reset()};
+  const ship=(id,x,y)=>({id,x,y,angle:0,cargoType:0,cargo:1,size:0,speed:40,state:'sailing',path:[],dock:null,targetDock:null,unloadTime:0,entered:true});
+  const ev=(name,id,x,y)=>handlers[name]?.({pointerId:id,clientX:x,clientY:y,preventDefault(){}});
+  reset(); const a=ship(1,100,200),b=ship(2,500,200); api.push(a);api.push(b);
+  ev('pointerdown',1,100,200);ev('pointermove',1,100,100);
+  ev('pointerdown',2,500,200);ev('pointermove',2,600,200);
+  assert.ok(a.path.length&&b.path.length,'both drawn paths immediately belong to their respective boats');
+  const snap=game.snapshot('live-test');
+  assert.ok(snap && snap.ships.find(s=>s.id===1).path.length,'a snapshot includes the current live route');
+  api.update(.5);
+  assert.ok(a.y<190 && Math.abs(a.x-100)<1,'the first boat responds before the finger lifts');
+  assert.ok(b.x>510 && Math.abs(b.y-200)<1,'a second simultaneous touch remains independent');
+  ev('pointercancel',1,100,100);
+  assert.ok(a.path.length,'a touch cancellation retains the points already drawn');
+  const oldY=a.y; api.update(.25);assert.ok(a.y<oldY,'cancelled route continues sailing');
+  ev('pointerup',2,600,200);
+
+  reset(); const dock=api.level.docks[0]; const departing=ship(3,dock.x,dock.y);
+  departing.cargo=0;departing.state='waiting';departing.dock=dock;dock.occupant=departing.id;api.push(departing);
+  ev('pointerdown',3,dock.x,dock.y);ev('pointermove',3,dock.x-100,dock.y);
+  assert.equal(departing.state,'sailing','an unloaded boat departs as the route is drawn');
+  assert.equal(dock.occupant,null,'its berth becomes available without waiting for pointer-up');
+  const before=departing.x;api.update(.5);assert.ok(departing.x<before,'departure begins before touch release');
+  ev('pointerup',3,dock.x-100,dock.y);
+
+  reset(); const arriving=ship(4,600,700);api.push(arriving);
+  ev('pointerdown',4,600,700);ev('pointermove',4,dock.x,dock.y);
+  assert.equal(arriving.targetDock,dock,'an intentional dock target is assigned during touch, not on release');
+  const dockSnap=game.snapshot('dock-live');
+  assert.ok(dockSnap && dockSnap.ships.find(s=>s.id===4).targetDockIndex===0,'live dock target can be safely saved');
+  api.stopSpawns();
+  for(let i=0;i<1000 && arriving.state!=='waiting';i++) api.update(.05);
+  assert.equal(arriving.state,'waiting','boat can reach and unload at its target while the finger remains down');
+  ev('pointerup',4,dock.x,dock.y);
+  assert.equal(arriving.state,'waiting','releasing an old touch does not restart an already docked boat');
+  game.destroy();
+  console.log('PASS: live steering, multitouch, snapshots, touch cancellation and immediate dock departure/targeting');
+} finally {await rm(dir,{recursive:true,force:true})}
