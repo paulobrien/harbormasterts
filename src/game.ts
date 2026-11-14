@@ -240,6 +240,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
   type WakeSegment = Point & { angle: number; age: number; size: number };
   type BoatWake = { sinceLast: number; segments: WakeSegment[] };
   const wakes = new Map<number, BoatWake>();
+  let routeFlash: (Point & { age: number }) | null = null;
   // The HD executable gives each boat 20 wake sprites, emits them at
   // size-specific intervals, and fades them over three to five seconds.
   const wakeIntervals = [.15, .3, .5];
@@ -299,6 +300,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     pressure = initialPressure(pressureConfig);
     routes.clear();
     wakes.clear();
+    routeFlash = null;
     gameOver = false;
     lastFrame = 0;
     updateScore();
@@ -338,6 +340,10 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
 
   function update(dt: number) {
     ageWakes(dt);
+    if (routeFlash) {
+      routeFlash.age += dt;
+      if (routeFlash.age >= .375) routeFlash = null;
+    }
     // Warnings belong to individual boats. The original excludes boats still
     // entering and uses their size-specific radii and a four-second horn timer.
     for (const ship of ships) {
@@ -544,6 +550,18 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     }
   }
 
+  function drawRouteFlash() {
+    if (!routeFlash || !assets.sprites.complete || !(assets.sprites.naturalWidth >= 32 && assets.sprites.naturalHeight >= 128)) return;
+    // The HD app uses the atlas's soft 32 × 32 white sprite, starting at
+    // 75% opacity and triple size, then fades and shrinks it over 0.375 s.
+    const scale = 3 - routeFlash.age * 2;
+    ctx.save();
+    ctx.globalAlpha = .75 - routeFlash.age * 2;
+    ctx.drawImage(assets.sprites, 0, 96, 32, 32,
+      routeFlash.x - 16 * scale, routeFlash.y - 16 * scale, 32 * scale, 32 * scale);
+    ctx.restore();
+  }
+
   function drawShip(ship: Ship) {
     ctx.save();
     ctx.translate(ship.x, ship.y);
@@ -603,6 +621,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     for (const {ship, draft} of routes.values()) drawPath(draft, ship, routeIsValid(ship, draft));
     drawWakes();
     for (const ship of ships) drawShip(ship);
+    drawRouteFlash();
   }
 
   function frame(timestamp: number) {
@@ -622,6 +641,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
   function pointerDown(event: PointerEvent) {
     if (!running || routes.has(event.pointerId)) return;
     const p = canvasPoint(event);
+    routeFlash = { ...p, age: 0 };
     let nearest: Ship | undefined;
     let nearestDistance = 48;
     for (const ship of ships) {
@@ -647,6 +667,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     // The HD controller tests the dock target before clipping against land.
     const target = drawnDock(route.ship, point);
     if (target) {
+      routeFlash = { x: target.x, y: target.y, age: 0 };
       route.targetDock = target;
       route.ship.targetDock = target;
       route.draft.push(dockApproach(target, 20));
@@ -744,7 +765,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     score = saved.score; nextId = saved.nextId; elapsed = saved.elapsed;
     pressure = {...saved.pressure};
     activePacing = {...saved.activePacing, maxSmall: saved.activePacing.maxSmall ?? initialPacing.maxSmall};
-    routes.clear(); wakes.clear(); gameOver = false; lastFrame = 0;
+    routes.clear(); wakes.clear(); routeFlash = null; gameOver = false; lastFrame = 0;
     updateScore(); render();
     return true;
   }
@@ -775,6 +796,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     destroy() {
       pause(); destroyed = true;
       wakes.clear();
+      routeFlash = null;
       canvas.removeEventListener('pointerdown', pointerDown);
       canvas.removeEventListener('pointermove', pointerMove);
       canvas.removeEventListener('pointerup', pointerUp);

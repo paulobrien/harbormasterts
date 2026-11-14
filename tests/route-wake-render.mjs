@@ -27,10 +27,12 @@ try {
     beginPath() {}, moveTo() {}, lineTo() {}, clearRect() {}, fillRect() {},
     translate() {}, rotate() {}, ellipse() {}, fill() {}, strokeRect() {}, arc() {}, fillText() {},
   };
-  const canvas = {style:{},getContext:()=>context,addEventListener(){},removeEventListener(){},getBoundingClientRect:()=>({left:0,top:0,width:1024,height:768})};
+  const events = {};
+  const canvas = {style:{},getContext:()=>context,addEventListener(name,handler){events[name]=handler},removeEventListener(){},
+    getBoundingClientRect:()=>({left:0,top:0,width:1024,height:768}),setPointerCapture(){},hasPointerCapture(){return true},releasePointerCapture(){}};
   const sprites = {complete:true,naturalWidth:512,naturalHeight:512};
   const assets = {background:{complete:false,naturalWidth:0},sprites,music:new Blob(),sounds:{},
-    levelText:'mapSize 1024 768\ndockElement\n900 700\n0\n0\n1\n1\n0\n'};
+    levelText:'mapSize 1024 768\ndockElement\n900 700\n0\n0\n1\n1\n0\ndockElement\n600 700\n0\n0\n1\n1\n1\n'};
   globalThis.requestAnimationFrame = () => 1;
   globalThis.cancelAnimationFrame = () => {};
   const game = createGame(canvas, assets);
@@ -70,8 +72,36 @@ try {
   images.length = 0;
   test.render();
   assert.equal(foam().length, 0, 'a new shift clears the previous wake');
+
+  boat.x = 100; boat.y = 100; boat.speed = 40; boat.path = [];
+  test.pushShip(boat);
+  const pointer = (x,y) => ({pointerId:7,clientX:x,clientY:y,preventDefault(){}});
+  const flashes = () => images.filter(({args}) => args[0] === sprites && args[1] === 0 && args[2] === 96 && args[3] === 32 && args[4] === 32);
+  events.pointerdown(pointer(100,100));
+  images.length = 0;
+  test.render();
+  assert.equal(flashes().length, 1, 'starting a touch produces the original feedback flash');
+  assert.equal(flashes()[0].alpha, .75);
+  assert.deepEqual(flashes()[0].args.slice(5), [52,52,96,96], 'the flash starts centred on the touch at triple size');
+  events.pointermove(pointer(590,68));
+  images.length = 0;
+  test.render();
+  assert.deepEqual(flashes()[0].args.slice(5), [52,52,96,96], 'a non-matching dock does not trigger a target flash');
+  events.pointermove(pointer(890,68));
+  images.length = 0;
+  test.render();
+  assert.deepEqual(flashes()[0].args.slice(5), [852,20,96,96], 'a matching dock receives a centred flash');
+  test.update(.1);
+  images.length = 0;
+  test.render();
+  assert.ok(Math.abs(flashes()[0].alpha - .55) < 1e-9, 'the dock flash fades');
+  assert.ok(Math.abs(flashes()[0].args[7] - 89.6) < 1e-9, 'the dock flash shrinks');
+  test.update(.3);
+  images.length = 0;
+  test.render();
+  assert.equal(flashes().length, 0, 'the dock flash disappears after 0.375 seconds');
   game.destroy();
-  console.log('PASS: continuous valid and invalid routes, moving wake sprites, fading and reset');
+  console.log('PASS: continuous routes, fading boat wakes, and touch and dock feedback flashes');
 } finally {
   await rm(dir, {recursive:true,force:true});
 }
