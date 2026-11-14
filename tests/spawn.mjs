@@ -23,6 +23,11 @@ try {
     assert.ok(Math.abs(Math.hypot(c.clearance.x-c.entry.x,c.clearance.y-c.entry.y)-30)<1e-9, 'checks first 30 units inward');
     assert.ok(Math.cos(c.angle) * (c.target.x-c.entry.x) + Math.sin(c.angle) * (c.target.y-c.entry.y) > 0,'heading points into screen');
   }
+  for (const [size,offset] of [[0,10],[1,15],[2,25]]) {
+    const values=[.1,.5];let i=0;
+    const c=chooseSpawnCandidate(1024,768,size,()=>true,()=>values[i++ % values.length]);
+    assert.ok(Math.abs(Math.hypot(c.start.x-c.entry.x,c.start.y-c.entry.y)-offset)<1e-9, `size ${size} starts ${offset} units outside the entry`);
+  }
   let attempts=0;
   assert.equal(chooseSpawnCandidate(1024,768,0,()=>{attempts++; return false},()=>.5),null);
   assert.equal(attempts,11,'unsuitable entries are bounded');

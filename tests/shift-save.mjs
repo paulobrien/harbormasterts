@@ -28,6 +28,11 @@ try {
   assert.equal(isValidShiftSave({...snapshot,version:2},level),false,'future schema rejected');
   assert.equal(isValidShiftSave({...snapshot,ships:[ship,ship]},level),false,'duplicate ship ids rejected');
   assert.equal(isValidShiftSave({...snapshot,ships:[{...ship,x:Infinity}]},level),false,'invalid positions rejected');
+  const arrival={...ship,x:-10,y:384,path:[],targetDockIndex:null,entered:false,spawnElapsed:1.5};
+  assert.equal(isValidShiftSave({...snapshot,ships:[arrival]},level),true,'an incoming boat can be saved');
+  assert.equal(isValidShiftSave({...snapshot,ships:[{...arrival,spawnElapsed:2.1}]},level),false,'invalid arrival timers are rejected');
+  assert.equal(isValidShiftSave({...snapshot,ships:[{...arrival,entered:true}]},level),false,'an incoming boat cannot already have entered');
+  assert.equal(isValidShiftSave({...snapshot,ships:[{...arrival,path:[{x:100,y:100}]}]},level),false,'an incoming boat cannot already have a route');
   assert.equal(isValidShiftSave({...snapshot,ships:[{...ship,dockIndex:99,state:'unloading'}]},level),false,'invalid dock index rejected');
   assert.equal(isValidShiftSave({...snapshot,ships:[{...ship,dockIndex:1,state:'unloading'}]},level),false,'cargo and dock mismatch rejected');
   const unloading = {...ship,dockIndex:0,targetDockIndex:null,state:'unloading'};

@@ -13,7 +13,7 @@ try {
   let source = await readFile('src/game.ts', 'utf8');
   const marker = '  reset();\n  render();\n  return {';
   assert.ok(source.includes(marker), 'game test seam exists');
-  source = source.replace(marker, `  reset();\n  render();\n  (globalThis as any).__smoke = {stopSpawns:()=>{pressure={...pressure,phase:0,threshold:1e9,spawnElapsed:-999999}},pushShip:(ship:any)=>ships.push(ship)};\n  return {`);
+  source = source.replace(marker, `  reset();\n  render();\n  (globalThis as any).__smoke = {stopSpawns:()=>{pressure={...pressure,phase:0,threshold:1e9,spawnElapsed:-999999}},pushShip:(ship:any)=>ships.push(ship),getShips:()=>ships};\n  return {`);
   await build({ stdin:{contents:source,sourcefile:'game.ts',resolveDir:resolve('src'),loader:'ts'}, outfile, bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent' });
   const { createGame } = await import(pathToFileURL(outfile).href);
 
@@ -81,13 +81,14 @@ try {
   });
   assert.equal(score, 0, 'new game starts at zero');
   game.start();
-  tick(4);
+  tick(5); // The original shows a two-second incoming-boat warning first.
   assert.ok(canvas.coordinates.length > 0, 'a boat spawns');
-  const first = canvas.coordinates[0];
+  const first = globalThis.__smoke.getShips()[0];
+  assert.equal(first.spawnElapsed,undefined,'first boat has finished its incoming warning');
   assert.ok(first.x > 0 && first.x < 100, 'first boat enters from the left');
   route(canvas, first, { x: 250, y: 207.36 });
   Math.random = () => 0.9;
-  tick(8.5);
+  tick(9.5);
   assert.equal(score, 1, 'matching dock unloads cargo and increments score');
   assert.ok(statuses.some(s => s.includes('Cargo delivered')), 'delivery confirmation emitted');
   assert.equal(gameOver, false, 'delivery does not crash');

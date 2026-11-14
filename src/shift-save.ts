@@ -17,6 +17,8 @@ export interface SavedShip {
   targetDockIndex: number | null;
   unloadTime: number;
   entered: boolean;
+  /** Elapsed portion of the original two-second arrival warning, if active. */
+  spawnElapsed?: number;
   warning?: boolean;
   warningTimer?: number;
 }
@@ -94,6 +96,7 @@ export function isValidShiftSave(value: unknown, level: SaveLevel): value is Shi
     if (!finite(ship.x, -256, level.width + 256) || !finite(ship.y, -256, level.height + 256) || !finite(ship.angle, -100_000, 100_000) || !finite(ship.speed, 0, 500) || !integer(ship.size, 0, 2) || !integer(ship.cargoType, 0, 255) || !integer(ship.cargo, 0, [1, 2, 4][ship.size])) return false;
     if (ship.state !== 'sailing' && ship.state !== 'docking' && ship.state !== 'unloading' && ship.state !== 'waiting') return false;
     if (!dockIndex(ship.dockIndex, level.dockCargoTypes.length) || !dockIndex(ship.targetDockIndex, level.dockCargoTypes.length) || !finite(ship.unloadTime, -1, 86_400) || typeof ship.entered !== 'boolean') return false;
+    if (ship.spawnElapsed !== undefined && (!finite(ship.spawnElapsed, 0, 2) || ship.entered || ship.state !== 'sailing' || ship.dockIndex !== null || ship.targetDockIndex !== null)) return false;
     if ((ship.warning !== undefined && typeof ship.warning !== 'boolean') || (ship.warningTimer !== undefined && !finite(ship.warningTimer, 0, 31_536_000))) return false;
     if ((ship.state === 'docking' || ship.state === 'unloading' || ship.state === 'waiting') && ship.dockIndex === null) return false;
     if ((ship.state === 'docking' || ship.state === 'unloading') && ship.cargo === 0) return false;
@@ -105,6 +108,7 @@ export function isValidShiftSave(value: unknown, level: SaveLevel): value is Shi
       occupants.add(ship.dockIndex);
     }
     if (!Array.isArray(ship.path) || ship.path.length > 4096) return false;
+    if (ship.spawnElapsed !== undefined && ship.path.length) return false;
     totalPoints += ship.path.length;
     if (totalPoints > 25_000 || !ship.path.every(point => isRecord(point) && finite(point.x, -256, level.width + 256) && finite(point.y, -256, level.height + 256))) return false;
   }

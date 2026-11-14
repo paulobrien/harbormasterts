@@ -43,7 +43,7 @@ export function chooseSpawnCandidate(
 ): SpawnCandidate | null {
   if (!(width > 0 && height > 0)) return null;
   const edges = ['left', 'right', 'top', 'bottom'] as const;
-  const offset = [30, 15, 25][size]; // Per-type original offsets from the entry point.
+  const offset = [10, 15, 25][size]; // Per-type original offsets from the entry point.
   for (let attempt = 0; attempt < 11; attempt++) {
     const edge = edges[Math.floor(unit(random()) * edges.length)];
     const along = unit(random());

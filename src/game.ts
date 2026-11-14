@@ -21,6 +21,8 @@ type Ship = Point & {
   targetDock?: Dock | null;
   unloadTime: number;
   entered: boolean;
+  /** Time spent displaying the incoming-boat warning; absent after arrival. */
+  spawnElapsed?: number;
   /** Per-boat warning state and time since last warning horn. */
   warning?: boolean;
   warningTimer?: number;
@@ -188,6 +190,8 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Canvas is not available on this device.');
   const ctx: CanvasRenderingContext2D = context;
+  const reducedMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   const level = parseLevel(assets.levelText);
   canvas.width = level.width;
   canvas.height = level.height;
@@ -323,7 +327,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     ships.push({
       id: nextId++, x: candidate.start.x, y: candidate.start.y, angle: candidate.angle, speed: [40,20,10][size],
       size, cargoType, cargo: [1,2,4][size],
-      state: 'sailing', path: [], dock: null, unloadTime: 0, entered: false,
+      state: 'sailing', path: [], dock: null, unloadTime: 0, entered: false, spawnElapsed: 0,
     });
     return true;
   }
@@ -368,7 +372,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     }
     elapsed += dt;
     const decision = advancePressure(pressure, pressureConfig, {
-      boats: ships.map(ship => ({size: ship.size as 0 | 1 | 2, spawning: !ship.entered,
+      boats: ships.map(ship => ({size: ship.size as 0 | 1 | 2, spawning: ship.spawnElapsed !== undefined,
         unloaded: ship.cargo === 0, docked: ship.state === 'unloading' || ship.state === 'waiting',
         warning: !!ship.warning})),
       occupiedDocks: level.docks.filter(dock => dock.occupant !== null).length,
@@ -378,6 +382,11 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     if (decision.applyPacing) activePacing = level.pacing.filter(p => p.from <= score).at(-1) || activePacing;
     if (decision.shouldSpawn && spawn()) pressure = recordSuccessfulSpawn(pressure);
     for (const ship of ships) {
+      if (ship.spawnElapsed !== undefined) {
+        ship.spawnElapsed += dt;
+        if (ship.spawnElapsed > 2) delete ship.spawnElapsed;
+        continue;
+      }
       if (ship.state === 'docking') {
         const dock = ship.dock!;
         const previous = { x: ship.x, y: ship.y };
@@ -512,7 +521,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     for (let i = 0; i < ships.length; i++) {
       for (let j = i + 1; j < ships.length; j++) {
         const a = ships[i], b = ships[j];
-        if (hullsOverlap(a, b)) { endGame(); return; }
+        if (a.spawnElapsed === undefined && b.spawnElapsed === undefined && hullsOverlap(a, b)) { endGame(); return; }
       }
     }
   }
@@ -585,6 +594,21 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     ctx.restore();
   }
 
+  function drawArrival(ship: Ship) {
+    const distance = [30, 35, 45][ship.size] + (reducedMotion?.matches ? 0 : 5 * Math.sin(elapsed * 5));
+    ctx.save();
+    ctx.translate(ship.x + Math.cos(ship.angle) * distance, ship.y + Math.sin(ship.angle) * distance);
+    ctx.rotate(ship.angle);
+    if (assets.sprites.complete && assets.sprites.naturalWidth >= 71 && assets.sprites.naturalHeight >= 63) {
+      // The controller places this 37 × 27 arrow ahead of a spawning boat.
+      ctx.drawImage(assets.sprites, 34, 36, 37, 27, -18.5, -13.5, 37, 27);
+    } else {
+      ctx.fillStyle = '#ffbe39';
+      ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(12, -10); ctx.lineTo(12, 10); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawShip(ship: Ship) {
     ctx.save();
     ctx.translate(ship.x, ship.y);
@@ -637,8 +661,9 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     }
     for (const {ship, draft} of routes.values()) drawPath(draft, ship, routeIsValid(ship, draft));
     drawWakes();
-    for (const ship of ships) drawWarning(ship);
-    for (const ship of ships) drawShip(ship);
+    for (const ship of ships) if (ship.spawnElapsed === undefined) drawWarning(ship);
+    for (const ship of ships) if (ship.spawnElapsed === undefined) drawShip(ship);
+    for (const ship of ships) if (ship.spawnElapsed !== undefined) drawArrival(ship);
     drawRouteFlash();
   }
 
@@ -663,7 +688,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     let nearest: Ship | undefined;
     let nearestDistance = 48;
     for (const ship of ships) {
-      if (ship.state === 'docking' || ship.state === 'unloading' || [...routes.values()].some(route => route.ship === ship)) continue;
+      if (ship.spawnElapsed !== undefined || ship.state === 'docking' || ship.state === 'unloading' || [...routes.values()].some(route => route.ship === ship)) continue;
       const d = distance(p, ship);
       if (d < nearestDistance) { nearest = ship; nearestDistance = d; }
     }
@@ -759,6 +784,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
         dockIndex: ship.dock ? level.docks.indexOf(ship.dock) : null,
         targetDockIndex: ship.targetDock ? level.docks.indexOf(ship.targetDock) : null,
         unloadTime: ship.unloadTime, entered: ship.entered,
+        ...(ship.spawnElapsed === undefined ? {} : {spawnElapsed: ship.spawnElapsed}),
         warning: ship.warning ?? false, warningTimer: ship.warningTimer ?? 0,
       })),
     };
@@ -775,6 +801,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
       dock: ship.dockIndex === null ? null : level.docks[ship.dockIndex],
       targetDock: ship.targetDockIndex === null ? null : level.docks[ship.targetDockIndex],
       unloadTime: ship.unloadTime, entered: ship.entered,
+      ...(ship.spawnElapsed === undefined ? {} : {spawnElapsed: ship.spawnElapsed}),
       warning: ship.warning ?? false, warningTimer: ship.warningTimer ?? 0,
     }));
     for (const dock of level.docks) dock.occupant = null;
