@@ -562,6 +562,29 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     ctx.restore();
   }
 
+  function routeIsValid(ship: Ship, points: Point[]): boolean {
+    const end = points.at(-1);
+    if (!end) return false;
+    return ship.cargo > 0
+      ? level.docks.some(dock => dock.cargo === ship.cargoType && dock.occupant === null && distance(end, dock) <= 44)
+      : end.x <= 15 || end.x >= level.width - 15 || end.y <= 15 || end.y >= level.height - 15;
+  }
+
+  function drawWarning(ship: Ship) {
+    if (!ship.warning || !assets.sprites.complete || !(assets.sprites.naturalWidth >= 162 && assets.sprites.naturalHeight >= 96)) return;
+    const widths = [37, 50, 75];
+    const offsets = [0, -4, -10];
+    const width = widths[ship.size];
+    ctx.save();
+    ctx.translate(ship.x, ship.y);
+    ctx.rotate(ship.angle);
+    // The controller draws the size-specific red warning outline beneath the
+    // boat, aligned to the native sprite's center offset.
+    ctx.drawImage(assets.sprites, [0, 37, 87][ship.size], 64, width, 32,
+      offsets[ship.size] - width / 2, -16, width, 32);
+    ctx.restore();
+  }
+
   function drawShip(ship: Ship) {
     ctx.save();
     ctx.translate(ship.x, ship.y);
@@ -572,10 +595,11 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     ctx.shadowBlur = 5;
     ctx.shadowOffsetY = 2;
     if (assets.sprites.complete && assets.sprites.naturalWidth > 0) {
-      // Coordinates recovered from the native HD texture setup. Each hull
-      // size has its own atlas height and a different unloaded-row offset.
+      // The native hull has a red unrouted frame and a grey routed frame;
+      // an empty boat waiting at a dock also uses the grey frame.
       const sx = [0, 32, 76][ship.size];
-      const sy = ship.cargo ? 0 : [16, 18, 22][ship.size];
+      const routed = ship.state !== 'sailing' || routeIsValid(ship, ship.path);
+      const sy = routed ? [16, 18, 22][ship.size] : 0;
       ctx.drawImage(assets.sprites, sx, sy, length, height, -length / 2, -height / 2, length, height);
     } else {
       ctx.fillStyle = '#f5f2e7';
@@ -583,20 +607,20 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     }
     ctx.shadowColor = 'transparent';
     if (ship.cargo) {
-      ctx.fillStyle = ship.cargoType === 0 ? '#ffbe39' : '#aa50dc';
-      ctx.strokeStyle = 'rgba(28, 28, 34, .8)';
-      ctx.lineWidth = 1.4;
+      // Cargo is a 16 × 16 child sprite positioned along the native hull.
+      const positions = [[-2], [2, -7], [0, -9, -18, -27]][ship.size];
+      const source = [[0, 32], [16, 32], [0, 48]][ship.cargoType];
       for (let i = 0; i < ship.cargo; i++) {
-        ctx.fillRect(-7 + i * 8, -5, 7, 10);
-        ctx.strokeRect(-7 + i * 8, -5, 7, 10);
+        // Native unloading removes the first matching cargo child without
+        // repositioning the remaining children.
+        const x = positions[positions.length - ship.cargo + i];
+        if (source && assets.sprites.complete && assets.sprites.naturalWidth >= source[0] + 16 && assets.sprites.naturalHeight >= source[1] + 16) {
+          ctx.drawImage(assets.sprites, source[0], source[1], 16, 16, x - 8, -8, 16, 16);
+        } else {
+          ctx.fillStyle = ship.cargoType === 0 ? '#ffbe39' : '#aa50dc';
+          ctx.fillRect(x - 3.5, -5, 7, 10);
+        }
       }
-    }
-    if (ship.state === 'waiting') {
-      ctx.rotate(-ship.angle);
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#06465b'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(0, -25, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#06465b'; ctx.font = 'bold 15px sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', 0, -25);
     }
     ctx.restore();
   }
@@ -608,18 +632,12 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     } else {
       ctx.fillStyle = '#147aa4'; ctx.fillRect(0, 0, level.width, level.height);
     }
-    const routeIsValid = (ship: Ship, points: Point[]) => {
-      const end = points.at(-1);
-      if (!end) return false;
-      return ship.cargo > 0
-        ? level.docks.some(dock => dock.cargo === ship.cargoType && dock.occupant === null && distance(end, dock) <= 44)
-        : end.x <= 15 || end.x >= level.width - 15 || end.y <= 15 || end.y >= level.height - 15;
-    };
     for (const ship of ships) {
       if (![...routes.values()].some(route => route.ship === ship)) drawPath(ship.path, ship, routeIsValid(ship, ship.path));
     }
     for (const {ship, draft} of routes.values()) drawPath(draft, ship, routeIsValid(ship, draft));
     drawWakes();
+    for (const ship of ships) drawWarning(ship);
     for (const ship of ships) drawShip(ship);
     drawRouteFlash();
   }
