@@ -35,6 +35,15 @@ try {
   assert.equal(isValidShiftSave({...snapshot,ships:[{...arrival,path:[{x:100,y:100}]}]},level),false,'an incoming boat cannot already have a route');
   assert.equal(isValidShiftSave({...snapshot,ships:[{...ship,dockIndex:99,state:'unloading'}]},level),false,'invalid dock index rejected');
   assert.equal(isValidShiftSave({...snapshot,ships:[{...ship,dockIndex:1,state:'unloading'}]},level),false,'cargo and dock mismatch rejected');
+  const mixed={...ship,size:2,cargo:4,cargoType:0,cargoSlots:[0,1,0,1],targetDockIndex:1};
+  assert.equal(isValidShiftSave({...snapshot,ships:[mixed]},level),true,'a route can target any matching cargo colour');
+  assert.equal(isValidShiftSave({...snapshot,ships:[{...mixed,cargoSlots:[0,1]}]},level),false,'cargo slot count must match the boat size');
+  assert.equal(isValidShiftSave({...snapshot,ships:[{...mixed,cargoSlots:[0,1,null,1]}]},level),false,'the cargo count must match occupied slots');
+  assert.equal(isValidShiftSave({...snapshot,ships:[{...mixed,cargoSlots:[0,1,0,256]}]},level),false,'invalid slot colours are rejected');
+  const partiallyUnloaded={...mixed,cargo:2,cargoSlots:[0,null,0,null],state:'waiting',dockIndex:1,targetDockIndex:null};
+  assert.equal(isValidShiftSave({...snapshot,ships:[partiallyUnloaded]},level),true,'a partly unloaded boat can wait at the first berth');
+  assert.equal(isValidShiftSave({...snapshot,ships:[{...partiallyUnloaded,dockIndex:0}]},level),false,'a waiting boat cannot still have cargo for its current dock');
+  assert.equal(isValidShiftSave({...pressured,activePacing:{...activePacing,allowMultiCargo:'yes'}},level),false,'invalid mixed-cargo pacing is rejected');
   const unloading = {...ship,dockIndex:0,targetDockIndex:null,state:'unloading'};
   assert.equal(isValidShiftSave({...snapshot,nextId:2,ships:[unloading,{...unloading,id:1}]},level),false,'duplicate dock occupants rejected');
   assert.equal(isValidShiftSave({...snapshot,ships:[{...ship,path:[{x:NaN,y:0}]}]},level),false,'invalid route point rejected');

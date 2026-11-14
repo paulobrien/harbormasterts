@@ -74,7 +74,11 @@ try {
     assert.ok(nearest,'dock has shoreline');
     return nearest;
   };
-  if (hasOriginalLevel) assert.equal(t.level.docks.length, 6,'the supplied HD map contains six docks');
+  if (hasOriginalLevel) {
+    assert.equal(t.level.docks.length, 6,'the supplied HD map contains six docks');
+    assert.equal(t.level.pacing.find(p=>p.from===0).allowMultiCargo,false,'the first original pacing stage uses single-colour boats');
+    assert.equal(t.level.pacing.find(p=>p.from===16).allowMultiCargo,true,'the score-16 original pacing stage enables mixed cargo');
+  }
   for (let idx=0;idx<t.level.docks.length;idx++) {
     for (const size of [0,1,2]) {
       reset();
@@ -100,6 +104,24 @@ try {
       assert.equal(t.level.land.some(p=>t.insidePolygon(ship,p)),false,`dock ${idx+1}, boat size ${size}: stays clear of land on departure`);
       assert.equal(crashed,false,`dock ${idx+1}, boat size ${size}: no crash leaving dock`);
     }
+  }
+  if (hasOriginalLevel) {
+    reset();
+    const first=t.level.docks[0], second=t.level.docks[4], {nx,ny}=waterNormal(first);
+    const ship={id:40,x:first.x+nx*65,y:first.y+ny*65,cargoType:0,cargo:4,cargoSlots:[0,1,0,1],size:2,
+      angle:Math.atan2(-ny,-nx),speed:10,state:'sailing',path:[],dock:null,targetDock:null,unloadTime:0,entered:true};
+    t.pushShip(ship);route(ship,first);
+    for(let n=0;n<2400 && !crashed && ship.state!=='waiting';n++)t.update(1/60);
+    assert.equal(ship.state,'waiting','mixed boat unloads its first colour at the original orange dock');
+    assert.deepEqual(ship.cargoSlots,[null,1,null,1]);assert.equal(score,2);
+    handlers.pointerdown(event(2,ship.x,ship.y));
+    for(const point of [{x:240,y:220},{x:240,y:350},{x:270,y:420},second]) handlers.pointermove(event(2,point.x,point.y));
+    handlers.pointerup(event(2,second.x,second.y));
+    assert.equal(ship.targetDock,second,'a mixed boat can target an original purple dock after its orange delivery');
+    for(let n=0;n<6000 && !crashed && ship.state!=='waiting';n++)t.update(1/60);
+    assert.equal(crashed,false,'the two-dock delivery stays clear of collisions');
+    assert.equal(ship.state,'waiting','remaining cargo reaches the second original dock');
+    assert.equal(ship.cargo,0);assert.equal(score,4);
   }
   // Invalid berths never unload cargo: wrong color and occupied docks are not available.
   for (const kind of ['wrong-color','occupied']) {
@@ -158,5 +180,5 @@ try {
     } finally { Math.random=originalRandom; }
   }
   game.destroy();
-  console.log(`PASS: ${t.level.docks.length} ${hasOriginalLevel?'original HD':'synthetic'} dock(s), 3 ship sizes each: drawn approach, unloading, cargo score and outward departure; invalid docks and map edges; four-edge HD spawn clearance and integrated initial pressure timing`);
+  console.log(`PASS: ${t.level.docks.length} ${hasOriginalLevel?'original HD':'synthetic'} dock(s), 3 ship sizes each: drawn approach, unloading, cargo score and outward departure; ${hasOriginalLevel?'mixed cargo across two original docks; ':''}invalid docks and map edges; four-edge HD spawn clearance and integrated initial pressure timing`);
 } finally { await rm(dir,{recursive:true,force:true}); }

@@ -12,6 +12,8 @@ type Ship = Point & {
   id: number;
   cargoType: number;
   cargo: number;
+  /** Original cargo positions; null marks a unit already delivered. */
+  cargoSlots?: (number | null)[];
   size: number;
   angle: number;
   speed: number;
@@ -28,7 +30,8 @@ type Ship = Point & {
   warningTimer?: number;
 };
 
-type Pacing = {from: number; interval: number; maxSmall: number; maxMedium: number; maxLarge: number};
+type Pacing = {from: number; interval: number; maxSmall: number; maxMedium: number; maxLarge: number;
+  cargoTypes?: number; allowMultiCargo?: boolean};
 type Level = { width: number; height: number; docks: Dock[]; land: Point[][]; pacing: Pacing[] };
 
 export interface GameCallbacks {
@@ -81,7 +84,10 @@ function parseLevel(text: string): Level {
       const from = Number(lines[i + 1]?.split(/\s+/)[0]);
       const parameters = lines[i + 2]?.split(/\s+/).map(Number) || [];
       const interval = parameters[0];
-      if (Number.isFinite(from) && interval > 0) pacing.push({from, interval, maxSmall: parameters[3] || 0, maxMedium: parameters[4] || 0, maxLarge: parameters[5] || 0});
+      if (Number.isFinite(from) && interval > 0) pacing.push({from, interval, maxSmall: parameters[3] || 0,
+        maxMedium: parameters[4] || 0, maxLarge: parameters[5] || 0,
+        cargoTypes: parameters[1] > 0 ? parameters[1] : undefined,
+        allowMultiCargo: parameters[2] === 1});
     }
   }
   if (!docks.length) throw new Error('The selected level does not contain any docks.');
@@ -230,7 +236,9 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
   };
   const initialPacing: Pacing = { from: 0, interval: pressureConfig.initialBoatInterval,
     maxSmall: readLevelNumber('maxSmallBoats', 999), maxMedium: readLevelNumber('maxMediumBoats', 0),
-    maxLarge: readLevelNumber('maxLargeBoats', 0) };
+    maxLarge: readLevelNumber('maxLargeBoats', 0),
+    cargoTypes: readLevelNumber('cargoTypes', new Set(level.docks.map(dock => dock.cargo)).size),
+    allowMultiCargo: readLevelNumber('allowMultiCargoBoats', 0) !== 0 };
   let activePacing = {...initialPacing};
   let pressure = initialPressure(pressureConfig);
   let elapsed = 0;
@@ -284,12 +292,15 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     const angle = -dock.angle * Math.PI / 180;
     return { x: dock.x - Math.cos(angle) * offset, y: dock.y - Math.sin(angle) * offset };
   }
+  function hasCargoFor(ship: Ship, type: number): boolean {
+    return ship.cargo > 0 && (ship.cargoSlots ? ship.cargoSlots.includes(type) : ship.cargoType === type);
+  }
   function drawnDock(ship: Ship, point: Point): Dock | null {
     if (ship.cargo <= 0) return null;
     return level.docks.find(dock => {
       // A manually drawn route checks whether the dock is blocked, not whether
       // another boat occupies it. Treasure Island has no blocking monsters.
-      if (dock.cargo !== ship.cargoType) return false;
+      if (!hasCargoFor(ship, dock.cargo)) return false;
       const approach = dockApproach(dock, 10);
       return distance(point, approach) < 40 && distance(ship, approach) > 40;
     }) || null;
@@ -324,11 +335,19 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
       return !ships.some(ship => distance(ship, c.entry) < [50, 60, 75][size]);
     });
     if (!candidate) return false;
-    const cargoTypes = [...new Set(level.docks.map(dock => dock.cargo))];
-    const cargoType = cargoTypes[Math.floor(Math.random() * cargoTypes.length)];
+    const stage = level.pacing.find(pacing => pacing.from === activePacing.from);
+    const allTypes = [...new Set(level.docks.map(dock => dock.cargo))].sort((a, b) => a - b);
+    const typeCount = activePacing.cargoTypes ?? stage?.cargoTypes ?? initialPacing.cargoTypes ?? allTypes.length;
+    const cargoTypes = allTypes.slice(0, Math.max(1, Math.floor(typeCount)));
+    const chooseCargo = () => cargoTypes[Math.floor(Math.random() * cargoTypes.length)];
+    const initialCargoType = chooseCargo();
+    const multi = activePacing.allowMultiCargo ?? stage?.allowMultiCargo ?? initialPacing.allowMultiCargo ?? false;
+    const cargoSlots = multi ? Array.from({length: [1,2,4][size]}, chooseCargo) : undefined;
+    const cargoType = cargoSlots?.[0] ?? initialCargoType;
     ships.push({
       id: nextId++, x: candidate.start.x, y: candidate.start.y, angle: candidate.angle, speed: [40,20,10][size],
       size, cargoType, cargo: [1,2,4][size],
+      ...(cargoSlots ? {cargoSlots} : {}),
       state: 'sailing', path: [], dock: null, unloadTime: 0, entered: false, spawnElapsed: 0,
     });
     return true;
@@ -413,16 +432,30 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
         ship.unloadTime -= dt;
         if (ship.unloadTime <= 0) {
           // The iPad app unloads each cargo unit separately at two seconds per
-          // unit, divided by the dock's speed-up factor.
+          // unit, divided by the dock's speed-up factor. Only matching cargo
+          // is removed; other colours remain in their original slots.
+          const dock = ship.dock!;
+          if (!hasCargoFor(ship, dock.cargo)) {
+            ship.state = 'waiting';
+            continue;
+          }
+          if (ship.cargoSlots) {
+            ship.cargoSlots[ship.cargoSlots.indexOf(dock.cargo)] = null;
+            const nextType = ship.cargoSlots.find(type => type !== null);
+            if (nextType !== undefined && nextType !== null) ship.cargoType = nextType;
+          }
           score++;
           ship.cargo--;
           sound('unloaded');
           updateScore();
-          if (ship.cargo > 0) ship.unloadTime += 2 / (ship.dock?.unloadRate || 1);
+          if (hasCargoFor(ship, dock.cargo)) ship.unloadTime += 2 / dock.unloadRate;
           else {
             ship.state = 'waiting';
             ship.path = [];
-            callbacks.onStatus?.('Cargo delivered! Draw a route back out to sea.');
+            ship.angle = -dock.angle * Math.PI / 180 + Math.PI;
+            callbacks.onStatus?.(ship.cargo > 0
+              ? 'Draw a route to a dock for the remaining cargo.'
+              : 'Cargo delivered! Draw a route back out to sea.');
           }
         }
         continue;
@@ -477,7 +510,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
         const activeTarget = ship.targetDock;
         const canAutoDock = autoDockEnabled && !activeTarget && ship.path.length === 0 && !ship.warning;
         const dock = level.docks.find(candidate => {
-          if (candidate.cargo !== ship.cargoType || candidate.occupant !== null) return false;
+          if (!hasCargoFor(ship, candidate.cargo) || candidate.occupant !== null) return false;
           if (activeTarget) return activeTarget === candidate && ship.path.length === 0 && distance(ship, candidate) < .01;
           return canAutoDock && distance(ship, dockApproach(candidate, 20)) < 24;
         });
@@ -635,15 +668,16 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     if (ship.cargo) {
       // Cargo is a 16 × 16 child sprite positioned along the native hull.
       const positions = [[-2], [2, -7], [0, -9, -18, -27]][ship.size];
-      const source = [[0, 32], [16, 32], [0, 48]][ship.cargoType];
-      for (let i = 0; i < ship.cargo; i++) {
-        // Native unloading removes the first matching cargo child without
-        // repositioning the remaining children.
-        const x = positions[positions.length - ship.cargo + i];
+      const slots = ship.cargoSlots ?? positions.map((_, i) => i < positions.length - ship.cargo ? null : ship.cargoType);
+      for (let i = 0; i < slots.length; i++) {
+        const type = slots[i];
+        if (type === null) continue;
+        const x = positions[i];
+        const source = [[0, 32], [16, 32], [0, 48]][type];
         if (source && assets.sprites.complete && assets.sprites.naturalWidth >= source[0] + 16 && assets.sprites.naturalHeight >= source[1] + 16) {
           ctx.drawImage(assets.sprites, source[0], source[1], 16, 16, x - 8, -8, 16, 16);
         } else {
-          ctx.fillStyle = ship.cargoType === 0 ? '#ffbe39' : '#aa50dc';
+          ctx.fillStyle = type === 0 ? '#ffbe39' : '#aa50dc';
           ctx.fillRect(x - 3.5, -5, 7, 10);
         }
       }
@@ -706,12 +740,25 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     canvas.setPointerCapture(event.pointerId);
     sound('startPath');
   }
+  function departDock(ship: Ship) {
+    if (ship.state !== 'waiting') return;
+    const dock = ship.dock;
+    if (dock) {
+      ship.angle = -dock.angle * Math.PI / 180 + Math.PI;
+      if (dock.occupant === ship.id) dock.occupant = null;
+      ship.dock = null;
+    }
+    ship.state = 'sailing';
+  }
   function appendRoutePoint(route: ActiveRoute, point: Point) {
     if (route.blocked) return;
     const previous = route.draft[route.draft.length - 1] || route.ship;
     // The HD controller tests the dock target before clipping against land.
     const target = drawnDock(route.ship, point);
     if (target) {
+      // A partly unloaded boat can leave one berth and snap directly to the
+      // next matching dock during the same gesture.
+      departDock(route.ship);
       routeFlash = { x: target.x, y: target.y, age: 0 };
       route.targetDock = target;
       route.ship.targetDock = target;
@@ -757,15 +804,8 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
       ? (distance(previous, point) > 25 ? [{...point}] : [])
       : nativeTouchSegment(previous, point, startDirection, endDirection);
     if (candidates.length && route.ship.state === 'waiting') {
-      // An unloaded, docked vessel starts to depart as soon as a route exists,
-      // rather than waiting for the finger to be lifted.
-      const dock = route.ship.dock;
-      if (dock) {
-        route.ship.angle = -dock.angle * Math.PI / 180 + Math.PI;
-        if (dock.occupant === route.ship.id) dock.occupant = null;
-        route.ship.dock = null;
-      }
-      route.ship.state = 'sailing';
+      // A ready vessel departs as soon as a route exists, while drawing.
+      departDock(route.ship);
     }
     for (const candidate of candidates) {
       const start = route.draft[route.draft.length - 1] || route.ship;
@@ -809,6 +849,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
       ships: ships.map(ship => ({
         id: ship.id, x: ship.x, y: ship.y, angle: ship.angle, speed: ship.speed, size: ship.size,
         cargoType: ship.cargoType, cargo: ship.cargo, state: ship.state,
+        ...(ship.cargoSlots ? {cargoSlots: [...ship.cargoSlots]} : {}),
         path: ship.path.map(point => ({...point})),
         dockIndex: ship.dock ? level.docks.indexOf(ship.dock) : null,
         targetDockIndex: ship.targetDock ? level.docks.indexOf(ship.targetDock) : null,
@@ -826,6 +867,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     const restored: Ship[] = saved.ships.map(ship => ({
       id: ship.id, x: ship.x, y: ship.y, angle: ship.angle, speed: ship.speed, size: ship.size,
       cargoType: ship.cargoType, cargo: ship.cargo, state: ship.state,
+      ...(ship.cargoSlots ? {cargoSlots: [...ship.cargoSlots]} : {}),
       path: ship.path.map(point => ({...point})),
       dock: ship.dockIndex === null ? null : level.docks[ship.dockIndex],
       targetDock: ship.targetDockIndex === null ? null : level.docks[ship.targetDockIndex],

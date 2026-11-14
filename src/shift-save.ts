@@ -10,6 +10,8 @@ export interface SavedShip {
   size: number;
   cargoType: number;
   cargo: number;
+  /** Present for mixed cargo; null slots have already been delivered. */
+  cargoSlots?: (number | null)[];
   state: SavedShipState;
   path: SavedPoint[];
   /** Index into the current parsed level's docks, or null. */
@@ -34,6 +36,8 @@ export interface SavedActivePacing {
   maxMedium: number;
   maxLarge: number;
   maxSmall?: number;
+  cargoTypes?: number;
+  allowMultiCargo?: boolean;
 }
 export interface ShiftSave {
   version: 1;
@@ -85,6 +89,7 @@ export function isValidShiftSave(value: unknown, level: SaveLevel): value is Shi
   if (value.activePacing !== undefined) {
     const pace = value.activePacing;
     if (!isRecord(pace) || !integer(pace.from, 0, 1_000_000) || !finite(pace.interval, .001, 86_400) || !integer(pace.maxMedium, 0, 1_000_000) || !integer(pace.maxLarge, 0, 1_000_000) || (pace.maxSmall !== undefined && !integer(pace.maxSmall, 0, 1_000_000))) return false;
+    if ((pace.cargoTypes !== undefined && !integer(pace.cargoTypes, 1, 256)) || (pace.allowMultiCargo !== undefined && typeof pace.allowMultiCargo !== 'boolean')) return false;
   }
   if (!Array.isArray(value.ships) || value.ships.length > 200) return false;
   const ids = new Set<number>();
@@ -94,15 +99,21 @@ export function isValidShiftSave(value: unknown, level: SaveLevel): value is Shi
     if (!isRecord(ship) || !integer(ship.id, 0, 10_000_000) || ship.id >= value.nextId || ids.has(ship.id)) return false;
     ids.add(ship.id);
     if (!finite(ship.x, -256, level.width + 256) || !finite(ship.y, -256, level.height + 256) || !finite(ship.angle, -100_000, 100_000) || !finite(ship.speed, 0, 500) || !integer(ship.size, 0, 2) || !integer(ship.cargoType, 0, 255) || !integer(ship.cargo, 0, [1, 2, 4][ship.size])) return false;
+    if (ship.cargoSlots !== undefined) {
+      if (!Array.isArray(ship.cargoSlots) || ship.cargoSlots.length !== [1, 2, 4][ship.size] || !ship.cargoSlots.every(type => type === null || integer(type, 0, 255))) return false;
+      if (ship.cargoSlots.filter(type => type !== null).length !== ship.cargo || (ship.cargo > 0 && !ship.cargoSlots.includes(ship.cargoType))) return false;
+    }
+    const cargoCount = ship.cargo;
+    const hasCargoFor = (type: number) => cargoCount > 0 && (Array.isArray(ship.cargoSlots) ? ship.cargoSlots.includes(type) : ship.cargoType === type);
     if (ship.state !== 'sailing' && ship.state !== 'docking' && ship.state !== 'unloading' && ship.state !== 'waiting') return false;
     if (!dockIndex(ship.dockIndex, level.dockCargoTypes.length) || !dockIndex(ship.targetDockIndex, level.dockCargoTypes.length) || !finite(ship.unloadTime, -1, 86_400) || typeof ship.entered !== 'boolean') return false;
     if (ship.spawnElapsed !== undefined && (!finite(ship.spawnElapsed, 0, 2) || ship.entered || ship.state !== 'sailing' || ship.dockIndex !== null || ship.targetDockIndex !== null)) return false;
     if ((ship.warning !== undefined && typeof ship.warning !== 'boolean') || (ship.warningTimer !== undefined && !finite(ship.warningTimer, 0, 31_536_000))) return false;
     if ((ship.state === 'docking' || ship.state === 'unloading' || ship.state === 'waiting') && ship.dockIndex === null) return false;
     if ((ship.state === 'docking' || ship.state === 'unloading') && ship.cargo === 0) return false;
-    if (ship.state === 'waiting' && ship.cargo !== 0) return false;
-    if (ship.dockIndex !== null && ship.cargo > 0 && level.dockCargoTypes[ship.dockIndex] !== ship.cargoType) return false;
-    if (ship.targetDockIndex !== null && (ship.cargo === 0 || level.dockCargoTypes[ship.targetDockIndex] !== ship.cargoType)) return false;
+    if ((ship.state === 'docking' || ship.state === 'unloading') && ship.dockIndex !== null && !hasCargoFor(level.dockCargoTypes[ship.dockIndex])) return false;
+    if (ship.state === 'waiting' && ship.dockIndex !== null && hasCargoFor(level.dockCargoTypes[ship.dockIndex])) return false;
+    if (ship.targetDockIndex !== null && !hasCargoFor(level.dockCargoTypes[ship.targetDockIndex])) return false;
     if (ship.state === 'unloading' || ship.state === 'waiting') {
       if (ship.dockIndex === null || occupants.has(ship.dockIndex)) return false;
       occupants.add(ship.dockIndex);
