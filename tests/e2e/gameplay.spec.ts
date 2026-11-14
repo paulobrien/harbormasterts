@@ -46,6 +46,9 @@ test('a drawn route delivers cargo through the browser canvas', async ({ page, c
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('harbor-master-saved-shift-v1') || '{}'));
   expect(saved.ships[0].targetDockIndex).toBe(0);
+  expect(saved.ships[0].path.length).toBeGreaterThanOrEqual(9);
+  expect(saved.ships[0].path.at(-2)).toEqual({ x: 510, y: 334 });
+  expect(saved.ships[0].path.at(-1)).toEqual({ x: 512, y: 334 });
   await page.getByRole('button', { name: 'Back to harbor' }).click();
   await page.evaluate(() => {
     const key = 'harbor-master-saved-shift-v1';

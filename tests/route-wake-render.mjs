@@ -11,7 +11,7 @@ try {
   let source = await readFile('src/game.ts', 'utf8');
   const marker = '  reset();\n  render();\n  return {';
   assert.ok(source.includes(marker));
-  source = source.replace(marker, `  reset();\n  render();\n  (globalThis as any).__renderTest = {update, render, pushShip:(s:any)=>ships.push(s)};\n  return {`);
+  source = source.replace(marker, `  reset();\n  render();\n  (globalThis as any).__renderTest = {level, update, render, pushShip:(s:any)=>ships.push(s)};\n  return {`);
   const output = join(dir, 'game.cjs');
   await build({stdin:{contents:source, sourcefile:'game.ts', resolveDir:resolve('src'), loader:'ts'},outfile:output,bundle:true,platform:'node',format:'cjs',logLevel:'silent'});
   const { createGame } = await import(pathToFileURL(output).href);
@@ -38,13 +38,14 @@ try {
   const game = createGame(canvas, assets);
   const test = globalThis.__renderTest;
   const boat = {id:1,x:100,y:100,angle:0,speed:40,size:0,cargoType:0,cargo:1,state:'sailing',
-    path:[{x:900,y:68}],dock:null,unloadTime:0,entered:true};
+    path:[{x:900,y:68}],dock:null,targetDock:test.level.docks[0],unloadTime:0,entered:true};
   test.pushShip(boat);
 
   strokes.length = 0;
   test.render();
   assert.deepEqual(strokes, [{color:'rgba(166, 196, 227, .4)',width:4,dash:[]}], 'a valid route is one continuous translucent line');
   boat.path = [{x:300,y:100}];
+  boat.targetDock = null;
   strokes.length = 0;
   test.render();
   assert.deepEqual(strokes, [{color:'rgb(217, 85, 77)',width:3,dash:[]}], 'an unfinished route is one continuous red line');
@@ -89,8 +90,11 @@ try {
   assert.deepEqual(flashes()[0].args.slice(5), [52,52,96,96], 'a non-matching dock does not trigger a target flash');
   events.pointermove(pointer(890,68));
   images.length = 0;
+  strokes.length = 0;
   test.render();
   assert.deepEqual(flashes()[0].args.slice(5), [852,20,96,96], 'a matching dock receives a centred flash');
+  assert.equal(strokes[0].color,'rgba(166, 196, 227, .4)', 'an accepted dock target changes the route to the original valid colour');
+  assert.deepEqual(boat.path.at(-1),{x:900,y:68}, 'the displayed route ends at the dock center');
   test.update(.1);
   images.length = 0;
   test.render();

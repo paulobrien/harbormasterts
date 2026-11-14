@@ -11,7 +11,7 @@ try {
   let source = await readFile('src/game.ts', 'utf8');
   const marker = '  reset();\n  render();\n  return {';
   assert.ok(source.includes(marker));
-  source = source.replace(marker, `  reset();\n  render();\n  (globalThis as any).__warnTest = {update, render, getShips:()=>ships, pushShip:(s:any)=>ships.push(s)};\n  return {`);
+  source = source.replace(marker, `  reset();\n  render();\n  (globalThis as any).__warnTest = {level, update, render, getShips:()=>ships, pushShip:(s:any)=>ships.push(s)};\n  return {`);
   const output = join(dir, 'game.cjs');
   await build({stdin:{contents:source, sourcefile:'game.ts', resolveDir:resolve('src'), loader:'ts'},outfile:output,bundle:true,platform:'node',format:'cjs',logLevel:'silent'});
   const {createGame} = await import(pathToFileURL(output).href);
@@ -55,6 +55,7 @@ try {
     if (size===1) unrouted.cargoType=1;
     const routed=boat(11+size*2,100+size*200,500,size,count);
     routed.path=[{x:900,y:68}];
+    routed.targetDock=test.level.docks[0];
     test.pushShip(unrouted);test.pushShip(routed);
   }
   draws.length=0;test.render();

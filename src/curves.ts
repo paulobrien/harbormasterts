@@ -27,8 +27,9 @@ export function cubicBezier(
 
 /**
  * Samples the native two-node curve at equally spaced steps, excluding the
- * existing start and including the target. A direction vector and its length
- * define each Bezier handle; the target handle points back from the target.
+ * existing start and including the target. The native spline constructor
+ * scales both direction vectors by half the distance between its endpoints;
+ * the target handle points back from the target.
  */
 export function sampleNativeCurve(
   start: CurvePoint,
@@ -36,8 +37,8 @@ export function sampleNativeCurve(
   end: CurvePoint,
   endDirection: CurvePoint,
   steps = 8,
-  startLength = 1,
-  endLength = 1,
+  startLength = Math.hypot(end.x - start.x, end.y - start.y) / 2,
+  endLength = Math.hypot(end.x - start.x, end.y - start.y) / 2,
 ): CurvePoint[] {
   if (!Number.isInteger(steps) || steps <= 0) throw new RangeError('Curve steps must be a positive integer');
   const c1 = { x: start.x + startDirection.x * startLength, y: start.y + startDirection.y * startLength };

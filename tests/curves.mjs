@@ -18,7 +18,9 @@ try {
   const samples = sampleNativeCurve(p(0,0),p(0,1),p(100,0),p(0,-1));
   assert.equal(samples.length,8);
   assert.deepEqual(samples.at(-1),p(100,0));
-  close(samples[3].x,50); close(samples[3].y,0.75);
+  close(samples[3].x,50); close(samples[3].y,37.5);
+  const shortHandles = sampleNativeCurve(p(0,0),p(0,1),p(100,0),p(0,-1),8,1,1);
+  close(shortHandles[3].y,0.75);
   assert.deepEqual(nativeTouchSegment(p(0,0),p(9,0),p(1,0),p(1,0)),[]);
   assert.deepEqual(nativeTouchSegment(p(0,0),p(9.1,0),p(1,0),p(1,0)),[p(9.1,0)]);
   assert.equal(nativeTouchSegment(p(0,0),p(99.9,0),p(1,0),p(1,0)).length,1);

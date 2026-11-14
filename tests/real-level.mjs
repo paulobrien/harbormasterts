@@ -83,6 +83,10 @@ try {
       const ship={id:idx,x:dock.x+nx*65,y:dock.y+ny*65,cargoType:dock.cargo,cargo,size,angle:Math.atan2(-ny,-nx),speed:[40,20,10][size],state:'sailing',path:[],dock:null,unloadTime:0,entered:true};
       t.pushShip(ship);
       route(ship,dock);
+      assert.equal(ship.targetDock,dock,`dock ${idx+1}, boat size ${size}: route snaps to the matching berth`);
+      assert.deepEqual(ship.path.at(-1),{x:dock.x,y:dock.y},`dock ${idx+1}, boat size ${size}: snapped route ends at the berth`);
+      const approach=ship.path.at(-2), offset=[2,5,10][size], angle=-dock.angle*Math.PI/180;
+      assert.ok(Math.hypot(approach.x-(dock.x-Math.cos(angle)*offset),approach.y-(dock.y-Math.sin(angle)*offset))<1e-7, `dock ${idx+1}, boat size ${size}: approach aligns with the berth`);
       for (let n=0;n<2400 && !crashed && ship.state!=='waiting';n++)t.update(1/60);
       assert.equal(crashed,false,`dock ${idx+1}, boat size ${size}: no crash`);
       assert.equal(ship.state,'waiting',`dock ${idx+1}, boat size ${size}: can dock and unload`);

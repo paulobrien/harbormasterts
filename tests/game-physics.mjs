@@ -52,11 +52,11 @@ try {
   handlers.pointerdown(event(20,docking.x,docking.y));handlers.pointermove(event(20,410,334));handlers.pointerup(event(20,410,334));tick(1);
   assert.ok(docking.x < 500 && !crashed,'boat exits dock into open water');
   reset();
-  // A valid-colored berth that is already occupied must not become a target.
+  // Manual targeting can select an occupied berth; automatic docking cannot.
   const occupied = t.level.docks[0]; occupied.occupant = 999;
   const arriving = ship(7,450,334); t.pushShip(arriving);
   handlers.pointerdown(event(21,450,334));handlers.pointermove(event(21,492,334));handlers.pointerup(event(21,492,334));
-  assert.equal(arriving.targetDock, null, 'occupied berth is not selected as a route target');
+  assert.equal(arriving.targetDock, occupied, 'manual route can target an occupied berth');
   game.destroy();
   console.log('PASS: land reflection, route clipping, four edge reflections, multitouch, shoreline dock and departure');
 } finally { await rm(dir,{recursive:true,force:true}); }

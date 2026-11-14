@@ -1,5 +1,5 @@
 import type { GameAssets } from './importer';
-import { nativeTouchSegment } from './curves';
+import { nativeTouchSegment, sampleNativeCurve } from './curves';
 import { chooseBoatSize, chooseSpawnCandidate } from './spawn';
 import { advancePressure, initialPressure, parsePressureConfig, recordSuccessfulSpawn } from './stress';
 import { fingerprintLevel, isValidShiftSave, type SaveLevel, type ShiftSave } from './shift-save';
@@ -287,7 +287,9 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
   function drawnDock(ship: Ship, point: Point): Dock | null {
     if (ship.cargo <= 0) return null;
     return level.docks.find(dock => {
-      if (dock.cargo !== ship.cargoType || dock.occupant !== null) return false;
+      // A manually drawn route checks whether the dock is blocked, not whether
+      // another boat occupies it. Treasure Island has no blocking monsters.
+      if (dock.cargo !== ship.cargoType) return false;
       const approach = dockApproach(dock, 10);
       return distance(point, approach) < 40 && distance(ship, approach) > 40;
     }) || null;
@@ -447,7 +449,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
         remainingTravel -= step;
         if (length - step < 1e-8) ship.path.shift();
       }
-      if (remainingTravel > 0 && !ship.path.length) {
+      if (remainingTravel > 0 && !ship.path.length && !ship.targetDock) {
         ship.x += Math.cos(ship.angle) * remainingTravel;
         ship.y += Math.sin(ship.angle) * remainingTravel;
       }
@@ -476,8 +478,8 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
         const canAutoDock = autoDockEnabled && !activeTarget && ship.path.length === 0 && !ship.warning;
         const dock = level.docks.find(candidate => {
           if (candidate.cargo !== ship.cargoType || candidate.occupant !== null) return false;
-          if (activeTarget !== candidate && !canAutoDock) return false;
-          return distance(ship, dockApproach(candidate, 20)) < 24;
+          if (activeTarget) return activeTarget === candidate && ship.path.length === 0 && distance(ship, candidate) < .01;
+          return canAutoDock && distance(ship, dockApproach(candidate, 20)) < 24;
         });
         if (dock) {
           ship.dock = dock;
@@ -486,7 +488,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
           ship.path.length = 0;
         }
       }
-      if (ship.state === 'sailing') {
+      if (ship.state === 'sailing' && !(ship.targetDock && ship.path.length <= 2)) {
         // Dock mouths sit next to the land polygon, so a valid docking approach
         // takes precedence. The original HD simulation reflects ships off
         // land, clears their path and keeps the game going.
@@ -575,7 +577,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     const end = points.at(-1);
     if (!end) return false;
     return ship.cargo > 0
-      ? level.docks.some(dock => dock.cargo === ship.cargoType && dock.occupant === null && distance(end, dock) <= 44)
+      ? !!ship.targetDock
       : end.x <= 15 || end.x >= level.width - 15 || end.y <= 15 || end.y >= level.height - 15;
   }
 
@@ -713,7 +715,28 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
       routeFlash = { x: target.x, y: target.y, age: 0 };
       route.targetDock = target;
       route.ship.targetDock = target;
-      route.draft.push(dockApproach(target, 20));
+      // The native app removes at least two tail points, backing up about 16
+      // units when possible, then curves into a size-specific approach point
+      // and finishes at the center of the dock.
+      const points = [{x: route.ship.x, y: route.ship.y}, ...route.draft];
+      let keep = 1, removedDistance = 0;
+      for (let count = points.length; count > 2; count--) {
+        keep = count - 2;
+        if (keep === 1) break;
+        removedDistance += distance(points[count - 1], points[count - 2]);
+        if (removedDistance >= 16) break;
+      }
+      route.draft.splice(keep - 1);
+      const start = points[keep - 1];
+      const before = points[keep - 2];
+      const heading = {x: Math.cos(route.ship.angle), y: Math.sin(route.ship.angle)};
+      const dx = before ? start.x - before.x : 0, dy = before ? start.y - before.y : 0;
+      const length = Math.hypot(dx, dy);
+      const direction = length > 1e-9 ? {x: dx / length, y: dy / length} : heading;
+      const approach = dockApproach(target, [2, 5, 10][route.ship.size]);
+      const dockAngle = -target.angle * Math.PI / 180;
+      route.draft.push(...sampleNativeCurve(start, direction, approach,
+        {x: Math.cos(dockAngle), y: Math.sin(dockAngle)}), {x: target.x, y: target.y});
       route.blocked = true;
       route.lastTouch = point;
       return;
@@ -722,11 +745,17 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
       const length = Math.hypot(v.x, v.y);
       return length > 1e-9 ? {x: v.x / length, y: v.y / length} : fallback;
     };
-    const heading = {x: Math.cos(route.ship.angle), y: Math.sin(route.ship.angle)};
+    const departureAngle = route.ship.state === 'waiting' && route.ship.dock
+      ? -route.ship.dock.angle * Math.PI / 180 + Math.PI : route.ship.angle;
+    const heading = {x: Math.cos(departureAngle), y: Math.sin(departureAngle)};
     const before = route.draft[route.draft.length - 2];
     const startDirection = before ? unit({x: previous.x - before.x, y: previous.y - before.y}, heading) : heading;
     const endDirection = unit({x: point.x - route.lastTouch.x, y: point.y - route.lastTouch.y}, startDirection);
-    const candidates = nativeTouchSegment(previous, point, startDirection, endDirection);
+    // The first native touch segment starts only after 25 units and goes
+    // directly to the finger; later large gaps are smoothed with a curve.
+    const candidates = !route.draft.length && route.ship.state !== 'waiting'
+      ? (distance(previous, point) > 25 ? [{...point}] : [])
+      : nativeTouchSegment(previous, point, startDirection, endDirection);
     if (candidates.length && route.ship.state === 'waiting') {
       // An unloaded, docked vessel starts to depart as soon as a route exists,
       // rather than waiting for the finger to be lifted.

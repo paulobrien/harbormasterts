@@ -33,8 +33,12 @@ try {
   assert.ok(a.angle > 0 && a.angle < Math.PI/2,'heading turns independently of path position');
   const b=ship(2,400,200); api.pushShip(b);
   const ev=(type,x,y)=>handlers[type]?.({pointerId:7,clientX:x,clientY:y,preventDefault(){}});
-  ev('pointerdown',400,200); ev('pointermove',550,250); ev('pointerup',550,250);
-  assert.equal(b.path.length,8,'a long pointer gap is sampled into eight native-style curve points');
+  ev('pointerdown',400,200); ev('pointermove',425,200);
+  assert.equal(b.path.length,0,'the first segment waits until the finger moves more than 25 units');
+  ev('pointermove',430,200);
+  assert.deepEqual(b.path,[{x:430,y:200}],'the first segment goes straight to the finger');
+  ev('pointermove',550,250); ev('pointerup',550,250);
+  assert.equal(b.path.length,9,'a later long pointer gap adds eight native-style curve points');
   assert.deepEqual(b.path.at(-1),{x:550,y:250},'the curve ends at the finger location');
   game.destroy();
   console.log('PASS: path arc-length traversal, orientation and long-gap touch smoothing');
