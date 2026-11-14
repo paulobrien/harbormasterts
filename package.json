@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "preview": "vite preview",
-    "build": "tsc --noEmit && vite build && node tools/version-shell.mjs",
-    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build && node tools/version-shell.mjs",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.e2e.json",
     "test": "node tools/run-tests.mjs",
     "test:e2e": "playwright test",
     "stage:assets": "node tools/stage-assets.mjs",

@@ -25,10 +25,15 @@ test('a failed replacement preserves the existing files and paused shift', async
 
   const change = page.getByRole('button', { name: 'Choose a different game file' });
   await expect(change).toBeVisible();
-  const chooser = page.waitForEvent('filechooser');
+  let chooser = page.waitForEvent('filechooser');
+  await change.click();
+  await (await chooser).setFiles({ name: 'broken.ipa', mimeType: 'application/zip', buffer: Buffer.from('not a zip') });
+  await expect(page.getByRole('status').first()).toContainText('Could not open this IPA');
+  await expect(page.getByRole('button', { name: /Continue shift/ })).toBeVisible();
+  chooser = page.waitForEvent('filechooser');
   await change.click();
   await (await chooser).setFiles({ name: 'bad.ipa', mimeType: 'application/zip', buffer: syntheticGame('not a valid level') });
-  await expect(page.getByRole('status')).toContainText('does not contain any docks');
+  await expect(page.getByRole('status').first()).toContainText('does not contain any docks');
   await expect(page.getByRole('button', { name: /Continue shift/ })).toBeVisible();
   await page.unroute('**/game/harbor-hd-assets.zip');
   await page.reload();

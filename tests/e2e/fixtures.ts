@@ -3,7 +3,7 @@ import { strToU8, zipSync } from 'fflate';
 
 // The fixture is intentionally synthetic. It contains project-owned artwork,
 // a minimal level, and no original Harbor Master files or sounds.
-export function syntheticGame(level = `mapSize 1024 768
+export const syntheticLevel = `mapSize 1024 768
 pacingElement
 0 9999
 60 1 0 10 0 0 0 0 0
@@ -14,7 +14,9 @@ dockElement
 1
 1
 0
-`): Buffer {
+`;
+
+export function syntheticGame(level = syntheticLevel): Buffer {
   const root = 'Payload/HarborMasterHD.app/';
   const art = readFileSync(new URL('../../public/icon-512.png', import.meta.url));
   return Buffer.from(zipSync({
