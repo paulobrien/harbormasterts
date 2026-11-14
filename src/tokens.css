@@ -1,0 +1,57 @@
+/* Hallmark · checked: 2026-11-14 · genre: playful · scope: app · built: the project · redesign: polish · v2.0.0 */
+/* Hallmark · pre-emit critique: P3 H4 E4 S4 R4 V3 · weakest: V, the familiar harbor palette stays; its text and controls gain contrast. */
+:root {
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-dialog-display: Georgia, serif;
+
+  --color-page: #f6f2e7;
+  --color-surface: #f8f5eb;
+  --color-ink: #153c47;
+  --color-heading: #123e47;
+  --color-muted: #516b65;
+  --color-status: #355d5c;
+  --color-link: #386d68;
+  --color-brand: #164e58;
+  --color-brand-accent: #9b4f1f;
+  --color-brand-badge: #dfede7;
+  --color-focus-light: #164e58;
+  --color-focus-dark: #f5d697;
+  --color-action: #dc8a49;
+  --color-action-hover: #ce7c3f;
+  --color-action-ink: #092b35;
+  --color-action-edge: #b76a33;
+  --color-outline-ink: #245660;
+  --color-outline-border: #a8c0b8;
+  --color-outline-hover: #e5ece1;
+  --color-rule: #dce5d8;
+  --color-stat: #154e56;
+  --color-control-accent: #aa5b27;
+  --color-clear: transparent;
+
+  --color-art-sky: #a9d4c8;
+  --color-art-sun: #f5ddaa;
+  --color-art-wave-back: #71b6ac;
+  --color-art-wave-mid: #478e8b;
+  --color-art-wave-front: #276d73;
+  --color-art-sail: #fff8e5;
+  --color-art-mast: #754e36;
+  --color-art-hull: #e29a63;
+  --color-art-hull-edge: #704c3b;
+  --color-art-spark: #fff4d9;
+  --color-art-label: #d9f0df;
+
+  --color-game: #0c3039;
+  --color-game-bar: #102e36;
+  --color-game-water: #102f38;
+  --color-game-ink: #d7e9de;
+  --color-game-muted: #9cb6ad;
+  --color-game-score: #fff4db;
+  --color-game-accent: #f2a256;
+  --color-game-control: #214b4f;
+  --color-game-control-hover: #2a625e;
+  --color-game-control-ink: #e5efe2;
+  --color-game-hint: #89a69b;
+  --color-overlay: rgba(9, 30, 35, .65);
+  --color-shadow: #071e2670;
+}

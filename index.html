@@ -8,34 +8,46 @@
   <meta name="description" content="A little harbor adventure, ready for your tablet.">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./src/style.css">
   <title>Harbor Master TS</title>
 </head>
 <body>
+  <svg class="icon-library" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-anchor" viewBox="0 0 24 24">
+      <circle cx="12" cy="4.5" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M12 7v13M8 10h8M4 15a8 8 0 0 0 16 0M2.5 16.5 4 14l2.5 1.5M21.5 16.5 20 14l-2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    </symbol>
+  </svg>
   <main id="app">
     <section id="welcome" class="welcome">
       <div class="welcome-inner">
-        <header class="brand"><span class="brand-icon">⚓</span><span>HARBOR MASTER <small>TS</small></span></header>
-        <div class="welcome-content"><div class="eyebrow"><span class="eyebrow-line"></span> YOUR HARBOR AWAITS</div>
-          <h1>All aboard for<br><em>Treasure Island.</em></h1>
+        <header class="brand"><span class="brand-icon"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-anchor"/></svg></span><span class="brand-wordmark">Harbor Master <small>TS</small></span></header>
+        <div class="welcome-content">
+          <h1>All aboard for<br>Treasure Island.</h1>
           <p class="intro">Guide the boats safely into harbor, unload their cargo and send them back out to sea.</p>
           <div id="status" class="status" role="status">Getting the harbor ready…</div>
-          <div class="actions"><button type="button" id="choose-label" class="button button-primary" hidden><span aria-hidden="true">⚓</span> Add game files</button><input id="file-input" type="file" accept=".ipa,.zip,application/octet-stream,application/zip" hidden>
-          <button id="continue-shift" class="button button-primary" hidden>▶ &nbsp; Continue shift</button><button id="play" class="button button-primary" hidden>▶ &nbsp; Play Treasure Island</button><button id="install" class="button button-outline" hidden>Install app</button><button id="welcome-settings" class="button button-outline">⚙ &nbsp; Settings</button></div>
-          <div id="shift-stats" class="shift-stats" aria-label="Treasure Island statistics" hidden><div><strong id="best-shift">0</strong><span>BEST SHIFT</span></div><div><strong id="avg-shift">0</strong><span>AVERAGE SHIFT</span></div><div><strong id="shifts-worked">0</strong><span>SHIFTS WORKED</span></div><div><strong id="total-cargo">0</strong><span>CARGO RECEIVED</span></div></div><p class="privacy">Scores and progress stay on this device when storage is available.</p><p class="privacy" data-storage-warning role="status" hidden>Settings, scores and shift progress cannot be saved on this device.</p>
+          <div class="actions"><button type="button" id="choose-label" class="button button-primary" hidden><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-anchor"/></svg> Add game files</button><input id="file-input" type="file" accept=".ipa,.zip,application/octet-stream,application/zip" hidden>
+          <button id="continue-shift" class="button button-primary" hidden>Continue shift</button><button id="play" class="button button-primary" hidden>Play Treasure Island</button><button id="install" class="button button-outline" hidden>Install app</button><button id="welcome-settings" class="button button-outline"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-settings"/></svg> Settings</button></div>
+          <div id="shift-stats" class="shift-stats" aria-label="Treasure Island statistics" hidden><div><strong id="best-shift">0</strong><span>Best shift</span></div><div><strong id="avg-shift">0</strong><span>Average shift</span></div><div><strong id="shifts-worked">0</strong><span>Shifts worked</span></div><div><strong id="total-cargo">0</strong><span>Cargo received</span></div></div><p class="privacy">Scores and progress stay on this device when storage is available.</p><p class="privacy" data-storage-warning role="status" hidden>Settings, scores and shift progress cannot be saved on this device.</p>
           <button id="change-file" class="text-button" hidden>Choose a different game file</button>
         </div>
-        <div class="footer"><span>MADE FOR A LITTLE MORE PLAY</span><span>✦ &nbsp; FAIR WINDS &amp; FOLLOWING SEAS</span></div>
+        <div class="footer"><span>Made for a little more play</span><span>Fair winds &amp; following seas</span></div>
       </div>
-      <div class="illustration" aria-hidden="true"><div class="sun"></div><div class="wave wave-one"></div><div class="wave wave-two"></div><div class="wave wave-three"></div><div class="sailboat"><span class="sail"></span><span class="mast"></span><span class="hull"></span></div><span class="spark spark-one">✦</span><span class="spark spark-two">✦</span><div class="island-label">TREASURE ISLAND<br><span>1 MAP · COUNTLESS VOYAGES</span></div></div>
+      <div class="illustration" aria-hidden="true"><div class="sun"></div><div class="wave wave-one"></div><div class="wave wave-two"></div><div class="wave wave-three"></div><div class="sailboat"><span class="sail"></span><span class="mast"></span><span class="hull"></span></div><span class="spark spark-one">✦</span><span class="spark spark-two">✦</span><div class="island-label">Treasure Island<br><span>One map, countless voyages</span></div></div>
     </section>
     <section id="game-screen" class="game-screen" hidden>
-      <header class="game-bar"><div class="game-name"><span>⚓</span> HARBOR MASTER <small>TS</small></div><div class="score">CARGO <strong id="score">0</strong></div><div class="bar-actions"><button id="mute" class="icon-button" aria-label="Mute music" title="Mute music">♫</button><button id="effects" class="icon-button" aria-label="Mute sound effects" title="Mute sound effects">◖))</button><button id="game-settings" class="icon-button" aria-label="Settings" title="Settings">⚙</button><button id="fullscreen" class="icon-button" aria-label="Toggle fullscreen" title="Fullscreen">⛶</button><button id="pause" class="icon-button" aria-label="Pause" title="Pause">Ⅱ</button></div></header>
-      <div class="game-wrap"><canvas id="canvas" aria-label="Treasure Island harbor game"></canvas><div id="overlay" class="overlay" hidden><div class="overlay-card"><span class="overlay-anchor">⚓</span><h2 id="overlay-title">Paused</h2><p id="overlay-text">The harbor can wait a moment.</p><div class="overlay-actions"><button id="resume" class="button button-primary">Resume</button><button id="restart" class="button button-outline">Play again</button><button id="home" class="text-button">Back to harbor</button></div></div></div></div>
-      <footer class="game-hint"><span>DRAW A ROUTE FROM A BOAT TO A MATCHING DOCK</span><span>THEN SEND IT BACK OUT TO SEA</span></footer>
+      <header class="game-bar"><div class="game-name"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-anchor"/></svg><span class="game-name-text brand-wordmark">Harbor Master <small>TS</small></span></div><div class="score"><span class="score-label">Cargo</span> <strong id="score">0</strong></div><div class="bar-actions"><button id="mute" class="icon-button" aria-label="Mute music" title="Mute music">♫</button><button id="effects" class="icon-button" aria-label="Mute sound effects" title="Mute sound effects">◖))</button><button id="game-settings" class="icon-button" aria-label="Settings" title="Settings"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-settings"/></svg></button><button id="fullscreen" class="icon-button" aria-label="Toggle fullscreen" title="Fullscreen">⛶</button><button id="pause" class="icon-button" aria-label="Pause" title="Pause">Ⅱ</button></div></header>
+      <div class="game-wrap"><canvas id="canvas" aria-label="Treasure Island harbor game"></canvas><div id="overlay" class="overlay" hidden><div class="overlay-card"><svg class="ui-icon overlay-anchor" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-anchor"/></svg><h2 id="overlay-title">Paused</h2><p id="overlay-text">The harbor can wait a moment.</p><div class="overlay-actions"><button id="resume" class="button button-primary">Resume</button><button id="restart" class="button button-outline">Play again</button><button id="home" class="text-button">Back to harbor</button></div></div></div></div>
+      <footer class="game-hint"><span>Draw a route from a boat to a matching dock</span><span>Then send it back out to sea</span></footer>
     </section>
   </main>
   <dialog id="settings" class="settings-dialog" aria-labelledby="settings-title">
-    <form method="dialog"><div class="settings-heading"><div><span class="settings-eyebrow">MAKE IT YOURS</span><h2 id="settings-title">Settings</h2></div><button class="settings-close" aria-label="Close settings">×</button></div>
+    <form method="dialog"><div class="settings-heading"><div><h2 id="settings-title">Settings</h2></div><button class="settings-close" aria-label="Close settings">×</button></div>
       <label class="volume-label" for="music-volume"><span>Music volume</span><output id="music-value" for="music-volume">55%</output></label><input id="music-volume" class="volume-slider" type="range" min="0" max="100" step="1" value="55">
       <label class="volume-label" for="effects-volume"><span>Sound effects volume</span><output id="effects-value" for="effects-volume">65%</output></label><input id="effects-volume" class="volume-slider" type="range" min="0" max="100" step="1" value="65">
       <label class="volume-label" for="auto-docking"><span>Auto Docking</span><input id="auto-docking" type="checkbox" checked></label>

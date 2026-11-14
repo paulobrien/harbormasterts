@@ -1,4 +1,3 @@
-import './style.css';
 import { importIpa, type GameAssets } from './importer';
 import { fetchBundledGame } from './bundled';
 import { createGame, saveLevelForAssets, type GameController } from './game';
@@ -75,7 +74,7 @@ function refreshContinue() {
     savedShift = found?.pressure && found.activePacing ? found : null;
   } catch { savedShift = null; }
   continueShift.hidden = !savedShift;
-  play.textContent = savedShift ? 'Start a new shift' : '▶  Play Treasure Island';
+  play.textContent = savedShift ? 'Start a new shift' : 'Play Treasure Island';
   play.classList.toggle('button-primary', !savedShift);
   play.classList.toggle('button-outline', !!savedShift);
 }
@@ -353,7 +352,7 @@ async function prepareGame(): Promise<void> {
     await load(bundle, true);
   } catch {
     choose.hidden = false;
-    setStatus('The game could not load. Please reconnect to the internet and reopen the page.');
+    setStatus('Game files could not be loaded. Add your game files, or reconnect and try again.');
   }
 }
 void prepareGame();
