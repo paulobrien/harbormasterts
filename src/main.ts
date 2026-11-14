@@ -14,7 +14,7 @@ const welcome = $<HTMLElement>('#welcome');
 const screen = $<HTMLElement>('#game-screen');
 const input = $<HTMLInputElement>('#file-input');
 const status = $<HTMLElement>('#status');
-const choose = $<HTMLElement>('#choose-label');
+const choose = $<HTMLButtonElement>('#choose-label');
 const play = $<HTMLButtonElement>('#play');
 const continueShift = $<HTMLButtonElement>('#continue-shift');
 const install = $<HTMLButtonElement>('#install');
@@ -117,30 +117,51 @@ function syncMute() {
 }
 async function load(file: File, shouldStore: boolean): Promise<boolean> {
   setStatus('Getting the harbor ready…');
-  choose.setAttribute('aria-disabled', 'true');
-  play.hidden = true;
+  choose.disabled = true;
+  change.disabled = true;
+  input.disabled = true;
+  play.disabled = true;
+  continueShift.disabled = true;
   try {
     const loaded = await importIpa(file);
-    assets = loaded;
+    // Validate the level before replacing a playable game in memory or storage.
+    saveLevelForAssets(loaded.levelText);
     let saved = true;
     if (shouldStore) {
       try { await storeFile(file); } catch { saved = false; }
     }
-    setStatus(saved ? 'Your game is ready. Let’s set sail!' : 'Ready to play! This device could not save the game, so it will need an internet connection next time.');
+    assets = loaded;
+    setStatus(saved ? 'Your game is ready. Let’s set sail!' : 'Ready to play! This device could not save the game files. You may need to add them again next time.');
     choose.hidden = true;
     play.hidden = false;
-    change.hidden = true;
+    change.hidden = false;
     refreshContinue();
     return true;
   } catch (error) {
-    assets = undefined;
-    savedShift = null;
-    continueShift.hidden = true;
-    choose.hidden = false;
-    change.hidden = true;
-    setStatus(error instanceof Error ? error.message : 'Could not read this file. Please try the Harbor Master HD IPA.');
+    const message = error instanceof Error ? error.message : 'Could not read this file. Please try the Harbor Master HD IPA.';
+    if (assets) {
+      choose.hidden = true;
+      change.hidden = false;
+      play.hidden = false;
+      refreshContinue();
+      setStatus(`${message} Your previous game is still available.`);
+    } else {
+      savedShift = null;
+      continueShift.hidden = true;
+      choose.hidden = false;
+      change.hidden = true;
+      play.hidden = true;
+      setStatus(message);
+    }
     return false;
-  } finally { choose.removeAttribute('aria-disabled'); input.value = ''; }
+  } finally {
+    choose.disabled = false;
+    change.disabled = false;
+    input.disabled = false;
+    play.disabled = false;
+    continueShift.disabled = false;
+    input.value = '';
+  }
 }
 function showPause(title: string, text: string, gameOver = false) {
   isPaused = !gameOver;
@@ -202,6 +223,7 @@ function begin(restoreShift: ShiftSave | null = null) {
   controller.start();
 }
 input.addEventListener('change', () => { const file = input.files?.[0]; if (file) void load(file, true); });
+choose.addEventListener('click', () => input.click());
 change.addEventListener('click', () => input.click());
 play.addEventListener('click', () => {
   if (savedShift && !window.confirm('Start a new shift? Your saved shift will be replaced.')) return;

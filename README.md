@@ -40,6 +40,8 @@ On Windows, replace `python3` with `python` if appropriate. The generator writes
 
 Alternatively, `HARBOR_HD_IPA=/path/to/file.ipa npm run build:playable` both creates the bundle and builds the site. On Windows PowerShell, use `$env:HARBOR_HD_IPA = 'C:\path\to\file.ipa'` followed by `npm run build:playable`. Set `PYTHON` if a different Python executable is needed.
 
+If a bundled game is unavailable, use **Add game files** to select a compatible IPA or asset bundle. Once a game is loaded, **Choose a different game file** lets you replace it. A file that cannot be opened or whose level has no usable docks is rejected before it replaces the existing stored game; the current game and saved shift remain available.
+
 ## CI and deployment
 
 Keep the source repository free of original assets. Provide the asset-only ZIP separately to an authorized build environment and stage it at build time:
