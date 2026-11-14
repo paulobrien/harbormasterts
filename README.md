@@ -52,6 +52,8 @@ The URL may point to an appropriately controlled private artifact service or an 
 
 `npm run build:playable` fails if a valid bundle cannot be staged, so it will not silently produce a deployment missing the game data. The build places the separately staged assets in `dist/`; anyone able to access a public deployment can access its bundled game data. Configure hosting access and distribution appropriately. After the initial online visit, the game stores its data locally for offline use, subject to browser storage availability.
 
+Each production build versions its offline app shell from its contents. An update becomes active only after the new shell and its required assets have all been cached; an interrupted update leaves the previous offline shell available. Game bundles are stored separately and are not part of the shell cache or its version.
+
 This checkout is independent of the existing published Site. Pushing to GitHub does not update that Site unless a deployment workflow or hosting integration is configured separately. Browser saves and installation are tied to the site's origin; a new domain has separate local saves.
 
 ## Playing
