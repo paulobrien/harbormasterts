@@ -18,11 +18,16 @@ The playable web distribution can include a bundle of the assets required by thi
 
 ```sh
 npm ci
+npm run typecheck
 npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
 
-`npm test` runs the regression suites. When no game files are present, tests use synthetic data. To test against an original local IPA, set `HARBOR_HD_IPA` to its path before running the tests. `npm run build` builds the application shell even when assets have not been staged; the built game will need the asset bundle before it can play.
+`npm test` runs the simulation and regression suites. `npm run test:e2e` builds the application and runs real Chromium browser tests with desktop, Android phone and Android tablet profiles. These are emulations, not a substitute for testing on a physical device. The default checks use synthetic data and need no original game files. To test against an original local IPA, set `HARBOR_HD_IPA` to its path before running the regression suites. `npm run build` builds the application shell even when assets have not been staged; the built game will need the asset bundle before it can play. CI runs the same checks on pushes and pull requests.
+
+The project-local [Playwright best-practices skill](.agents/skills/playwright-best-practices/SKILL.md) is included to guide browser-test work. It comes from [currents-dev/playwright-best-practices-skill](https://github.com/currents-dev/playwright-best-practices-skill) at revision `0b75b5835a87de1fdd202ba965f3bc5a27738fdf`; its MIT licence is included with the skill.
 
 To create the local bundle and start the development server:
 
