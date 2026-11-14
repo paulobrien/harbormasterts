@@ -64,6 +64,8 @@ test('game and pause controls meet contrast requirements', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Play Treasure Island/ }).click();
   await expectReadableText(page);
+  await page.getByRole('button', { name: 'Fast forward' }).click();
+  await expectReadableText(page);
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Paused' })).toBeVisible();
   await expectReadableText(page);
@@ -96,12 +98,22 @@ test('keyboard focus is visible on the dark game bar and light pause panel', asy
   await page.keyboard.press('Tab');
   const music = page.getByRole('button', { name: 'Mute music' });
   await expectFocus(music, '.game-bar');
+  const speed = page.getByRole('button', { name: 'Fast forward' });
+  await speed.focus();
+  await expectFocus(speed, '.game-bar');
+  await page.keyboard.press('Space');
+  await expect(speed).toHaveAttribute('aria-pressed', 'true');
+  await expectFocus(speed, '.game-bar');
   const pause = page.getByRole('button', { name: 'Pause', exact: true });
   await pause.focus();
   await page.keyboard.press('Enter');
   const resume = page.getByRole('button', { name: 'Resume' });
   await resume.focus();
   await expectFocus(resume, '.overlay-card');
+  await page.keyboard.press('Enter');
+  await expect(speed).toHaveAttribute('aria-pressed', 'true');
+  await speed.click();
+  await expect(speed).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('reduced motion removes button movement and transitions', async ({ page }) => {
@@ -124,7 +136,7 @@ test('home actions and game controls remain within narrow viewports', async ({ p
   }));
   await page.goto('/');
   await expect(page.getByRole('button', { name: /Play Treasure Island/ })).toBeVisible();
-  const widths = [320, 375, 414, 512, 513, 768];
+  const widths = [320, 360, 361, 375, 414, 512, 513, 600, 601, 768];
   const outsideViewport = (selector: string) => page.locator(selector).evaluateAll(elements => elements
     .filter(element => element.getClientRects().length > 0)
     .map(element => ({ label: element.getAttribute('aria-label') || element.textContent?.trim(), box: element.getBoundingClientRect().toJSON() }))

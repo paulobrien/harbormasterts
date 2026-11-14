@@ -48,6 +48,7 @@ export interface GameController {
   destroy(): void;
   setEffectsVolume(volume: number): void;
   setAutoDock(enabled: boolean): void;
+  setFastForward(enabled: boolean): void;
   snapshot(shiftId: string): ShiftSave | null;
   restore(snapshot: ShiftSave): boolean;
 }
@@ -214,6 +215,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
   }
   let effectsVolume = 0.65;
   let autoDockEnabled = true;
+  let fastForwardEnabled = false;
   function sound(name: string) {
     const element = audio.get(name.toLowerCase());
     if (!element || effectsVolume <= 0) return;
@@ -308,6 +310,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
 
   function updateScore() { callbacks.onScore?.(score); }
   function reset() {
+    fastForwardEnabled = false;
     ships = [];
     for (const dock of level.docks) dock.occupant = null;
     score = 0;
@@ -707,7 +710,8 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     if (destroyed || !running) return;
     const dt = lastFrame ? Math.min((timestamp - lastFrame) / 1000, .05) : 0;
     lastFrame = timestamp;
-    update(dt);
+    // The original defaults to a 1.5× simulation multiplier in fast-forward.
+    update(dt * (fastForwardEnabled ? 1.5 : 1));
     render();
     if (running) animationFrame = requestAnimationFrame(frame);
   }
@@ -907,6 +911,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     restart() { pause(); reset(); render(); resume(); },
     setEffectsVolume(volume: number) { effectsVolume = clamp(volume, 0, 1); },
     setAutoDock(enabled: boolean) { autoDockEnabled = enabled; },
+    setFastForward(enabled: boolean) { fastForwardEnabled = enabled; },
     snapshot,
     restore,
     destroy() {

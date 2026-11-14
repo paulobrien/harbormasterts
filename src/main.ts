@@ -26,6 +26,7 @@ const overlayText = $<HTMLElement>('#overlay-text');
 const resumeButton = $<HTMLButtonElement>('#resume');
 const restartButton = $<HTMLButtonElement>('#restart');
 const muteButton = $<HTMLButtonElement>('#mute');
+const fastForwardButton = $<HTMLButtonElement>('#fast-forward');
 const settings = $<HTMLDialogElement>('#settings');
 const musicSlider = $<HTMLInputElement>('#music-volume');
 const effectsSlider = $<HTMLInputElement>('#effects-volume');
@@ -61,6 +62,12 @@ function savedVolume(key: string, fallback: number): number {
 let musicVolume = savedVolume('harbor-music-volume', .55);
 let effectsVolume = savedVolume('harbor-effects-volume', .65);
 let autoDockEnabled = readPreference('harbor-auto-dock') !== '0';
+let fastForwardEnabled = false;
+function setFastForward(enabled: boolean) {
+  fastForwardEnabled = enabled;
+  fastForwardButton.setAttribute('aria-pressed', String(enabled));
+  controller?.setFastForward(enabled);
+}
 let shiftRecorder = new ShiftRecorder(localStore);
 let currentShiftId = '';
 let savedShift: ShiftSave | null = null;
@@ -192,6 +199,7 @@ function showPause(title: string, text: string, gameOver = false) {
 }
 function begin(restoreShift: ShiftSave | null = null) {
   if (!assets) return;
+  setFastForward(false);
   currentShiftId = restoreShift?.shiftId || newShiftId();
   saveProblem = false;
   welcome.hidden = true;
@@ -261,8 +269,10 @@ restartButton.addEventListener('click', () => {
   clearShiftSave(localStore); savedShift = null; currentShiftId = newShiftId();
   shiftRecorder = new ShiftRecorder(localStore, currentShiftId);
   controller?.restart();
+  setFastForward(false);
   void soundtrack?.play().catch(() => {});
 });
+fastForwardButton.addEventListener('click', () => setFastForward(!fastForwardEnabled));
 $<HTMLButtonElement>('#home').addEventListener('click', () => {
   if (controller && !ended) { controller.pause(); persistActiveShift(); }
   controller?.destroy(); controller = undefined;

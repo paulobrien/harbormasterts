@@ -13,7 +13,7 @@ try {
   let source = await readFile('src/game.ts', 'utf8');
   const marker = '  reset();\n  render();\n  return {';
   assert.ok(source.includes(marker), 'game test seam exists');
-  source = source.replace(marker, `  reset();\n  render();\n  (globalThis as any).__smoke = {stopSpawns:()=>{pressure={...pressure,phase:0,threshold:1e9,spawnElapsed:-999999}},pushShip:(ship:any)=>ships.push(ship),getShips:()=>ships};\n  return {`);
+  source = source.replace(marker, `  reset();\n  render();\n  (globalThis as any).__smoke = {stopSpawns:()=>{pressure={...pressure,phase:0,threshold:1e9,spawnElapsed:-999999}},pushShip:(ship:any)=>ships.push(ship),getShips:()=>ships,getElapsed:()=>elapsed};\n  return {`);
   await build({ stdin:{contents:source,sourcefile:'game.ts',resolveDir:resolve('src'),loader:'ts'}, outfile, bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent' });
   const { createGame } = await import(pathToFileURL(outfile).href);
 
@@ -108,6 +108,43 @@ try {
   game.restart();
   assert.equal(score, 0, 'restart resets score');
   game.destroy();
+
+  // Fast-forward scales simulation time and movement, but pause and restart
+  // retain their normal semantics.
+  queue.clear(); now = 0;
+  const speedGame = createGame(fakeCanvas(), assets(level(800, 550)));
+  speedGame.start();
+  tick(.1);
+  globalThis.__smoke.stopSpawns();
+  const speedShip = {id:0,x:200,y:300,angle:0,cargoType:0,cargo:1,size:0,speed:40,state:'sailing',path:[],dock:null,unloadTime:0,entered:true};
+  globalThis.__smoke.pushShip(speedShip);
+  const startX = speedShip.x;
+  const startElapsed = globalThis.__smoke.getElapsed();
+  tick(1);
+  const normalDistance = speedShip.x - startX;
+  const normalTime = globalThis.__smoke.getElapsed() - startElapsed;
+  speedGame.setFastForward(true);
+  const fastStartX = speedShip.x;
+  const fastStartElapsed = globalThis.__smoke.getElapsed();
+  tick(1);
+  assert.ok(Math.abs((speedShip.x - fastStartX) - normalDistance * 1.5) < 1e-8, 'fast-forward moves boats 1.5 times as far');
+  assert.ok(Math.abs((globalThis.__smoke.getElapsed() - fastStartElapsed) - normalTime * 1.5) < 1e-8, 'fast-forward scales simulation timers');
+  speedGame.pause();
+  const pausedX = speedShip.x;
+  tick(1);
+  assert.equal(speedShip.x, pausedX, 'pausing fast-forward stops movement');
+  speedGame.resume();
+  tick(.05); // The first resumed animation frame sets its time baseline.
+  tick(1);
+  assert.ok(Math.abs((speedShip.x - pausedX) - normalDistance * 1.5) < 1e-8, 'resuming retains fast-forward');
+  speedGame.restart();
+  globalThis.__smoke.stopSpawns();
+  const restartedShip = {...speedShip, x: 200};
+  globalThis.__smoke.pushShip(restartedShip);
+  tick(.05);
+  tick(1);
+  assert.ok(Math.abs((restartedShip.x - 200) - normalDistance) < 1e-8, 'restart returns to normal speed');
+  speedGame.destroy();
 
   // Two ships sailing head-on trigger an actual hull collision and game over.
   queue.clear(); now = 0; Math.random = () => 0.1;
