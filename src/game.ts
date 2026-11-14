@@ -237,6 +237,41 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
   let animationFrame = 0;
   type ActiveRoute = {ship: Ship; draft: Point[]; blocked: boolean; targetDock: Dock | null; lastTouch: Point};
   const routes = new Map<number, ActiveRoute>();
+  type WakeSegment = Point & { angle: number; age: number; size: number };
+  type BoatWake = { sinceLast: number; segments: WakeSegment[] };
+  const wakes = new Map<number, BoatWake>();
+  // The HD executable gives each boat 20 wake sprites, emits them at
+  // size-specific intervals, and fades them over three to five seconds.
+  const wakeIntervals = [.15, .3, .5];
+  const wakeLifetimes = [3, 4, 5];
+  const wakeScales = [.75, .95, 1.15];
+  const wakeOffsets = [4, 12, 28];
+
+  function ageWakes(dt: number) {
+    for (const wake of wakes.values()) {
+      for (const segment of wake.segments) segment.age += dt;
+      wake.segments = wake.segments.filter(segment => segment.age < wakeLifetimes[segment.size]);
+    }
+  }
+
+  function leaveWake(ship: Ship, previous: Point, dt: number) {
+    if (dt <= 0 || distance(ship, previous) < 1e-8) return;
+    let wake = wakes.get(ship.id);
+    if (!wake) { wake = { sinceLast: 0, segments: [] }; wakes.set(ship.id, wake); }
+    const interval = wakeIntervals[ship.size];
+    wake.sinceLast += dt;
+    while (wake.sinceLast >= interval) {
+      wake.sinceLast -= interval;
+      const progress = clamp(1 - wake.sinceLast / dt, 0, 1);
+      const back = wakeOffsets[ship.size];
+      wake.segments.push({
+        x: previous.x + (ship.x - previous.x) * progress - Math.cos(ship.angle) * back,
+        y: previous.y + (ship.y - previous.y) * progress - Math.sin(ship.angle) * back,
+        angle: ship.angle, age: wake.sinceLast, size: ship.size,
+      });
+      if (wake.segments.length > 20) wake.segments.shift();
+    }
+  }
 
   // The HD app measures auto-docking from a point 20 units in front of
   // the berth. Drawn routes target a point 10 units in front of it.
@@ -263,6 +298,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     activePacing = {...initialPacing};
     pressure = initialPressure(pressureConfig);
     routes.clear();
+    wakes.clear();
     gameOver = false;
     lastFrame = 0;
     updateScore();
@@ -301,6 +337,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
   }
 
   function update(dt: number) {
+    ageWakes(dt);
     // Warnings belong to individual boats. The original excludes boats still
     // entering and uses their size-specific radii and a four-second horn timer.
     for (const ship of ships) {
@@ -337,12 +374,14 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     for (const ship of ships) {
       if (ship.state === 'docking') {
         const dock = ship.dock!;
+        const previous = { x: ship.x, y: ship.y };
         const remaining = distance(ship, dock);
         const step = Math.min(remaining, ship.speed * dt);
         if (remaining > 0) {
           ship.x += (dock.x - ship.x) / remaining * step;
           ship.y += (dock.y - ship.y) / remaining * step;
         }
+        leaveWake(ship, previous, dt);
         if (remaining <= step + .01) {
           ship.x = dock.x; ship.y = dock.y;
           dock.occupant = ship.id;
@@ -453,6 +492,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
           break;
         }
       }
+      leaveWake(ship, previous, dt);
     }
     // Empty boats leave safely. Behavior of loaded boats at the edge is kept
     // deliberately separate while original handling is verified.
@@ -461,6 +501,8 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
       if (ship.dock && ship.dock.occupant === ship.id) ship.dock.occupant = null;
       return false;
     });
+    const activeIds = new Set(ships.map(ship => ship.id));
+    for (const id of wakes.keys()) if (!activeIds.has(id)) wakes.delete(id);
     for (let i = 0; i < ships.length; i++) {
       for (let j = i + 1; j < ships.length; j++) {
         const a = ships[i], b = ships[j];
@@ -469,21 +511,37 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     }
   }
 
-  function drawPath(points: Point[], start: Point, color: string, dashed: boolean) {
+  function drawPath(points: Point[], start: Point, valid: boolean) {
     if (!points.length) return;
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
     for (const p of points) ctx.lineTo(p.x, p.y);
-    ctx.strokeStyle = 'rgba(0, 32, 58, .45)';
-    ctx.lineWidth = 7;
+    // cBoat::drawPath uses a continuous translucent blue line for routes
+    // ending at a dock or map edge, and an opaque red line otherwise.
+    ctx.strokeStyle = valid ? 'rgba(166, 196, 227, .4)' : 'rgb(217, 85, 77)';
+    ctx.lineWidth = valid ? 4 : 3;
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    ctx.stroke();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3.5;
-    if (dashed) ctx.setLineDash([7, 7]);
+    ctx.setLineDash([]);
     ctx.stroke();
     ctx.restore();
+  }
+
+  function drawWakes() {
+    if (!assets.sprites.complete || !(assets.sprites.naturalWidth >= 175 && assets.sprites.naturalHeight >= 44)) return;
+    for (const wake of wakes.values()) for (const segment of wake.segments) {
+      const progress = segment.age / wakeLifetimes[segment.size];
+      const scale = Math.max(0, wakeScales[segment.size] - progress);
+      if (scale === 0) continue;
+      ctx.save();
+      ctx.translate(segment.x, segment.y);
+      ctx.rotate(segment.angle);
+      ctx.globalAlpha = 1 - progress;
+      // Reuse the foam sprite from the player's own HD atlas; no game artwork
+      // is included in the repository.
+      ctx.drawImage(assets.sprites, 146, 22, 29, 22, -14.5 * scale, -11 * scale, 29 * scale, 22 * scale);
+      ctx.restore();
+    }
   }
 
   function drawShip(ship: Ship) {
@@ -492,13 +550,6 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     ctx.rotate(ship.angle);
     const length = [32, 44, 70][ship.size];
     const height = [16, 18, 22][ship.size];
-    // A quiet wake reinforces direction without relying on extra sprite metadata.
-    if (ship.state === 'sailing') {
-      ctx.fillStyle = 'rgba(224, 252, 255, .55)';
-      ctx.beginPath();
-      ctx.ellipse(-length * .57, 0, length * .23, 3, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
     ctx.shadowColor = 'rgba(0, 21, 34, .55)';
     ctx.shadowBlur = 5;
     ctx.shadowOffsetY = 2;
@@ -539,18 +590,18 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     } else {
       ctx.fillStyle = '#147aa4'; ctx.fillRect(0, 0, level.width, level.height);
     }
-    const routeColor = (ship: Ship, points: Point[]) => {
+    const routeIsValid = (ship: Ship, points: Point[]) => {
       const end = points.at(-1);
-      if (!end) return 'rgba(255,255,255,.9)';
-      const valid = ship.cargo > 0
+      if (!end) return false;
+      return ship.cargo > 0
         ? level.docks.some(dock => dock.cargo === ship.cargoType && dock.occupant === null && distance(end, dock) <= 44)
         : end.x <= 15 || end.x >= level.width - 15 || end.y <= 15 || end.y >= level.height - 15;
-      return valid ? 'rgba(255,255,255,.95)' : 'rgba(255,100,91,.95)';
     };
     for (const ship of ships) {
-      if (![...routes.values()].some(route => route.ship === ship)) drawPath(ship.path, ship, routeColor(ship, ship.path), true);
+      if (![...routes.values()].some(route => route.ship === ship)) drawPath(ship.path, ship, routeIsValid(ship, ship.path));
     }
-    for (const {ship, draft} of routes.values()) drawPath(draft, ship, routeColor(ship, draft), false);
+    for (const {ship, draft} of routes.values()) drawPath(draft, ship, routeIsValid(ship, draft));
+    drawWakes();
     for (const ship of ships) drawShip(ship);
   }
 
@@ -693,7 +744,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     score = saved.score; nextId = saved.nextId; elapsed = saved.elapsed;
     pressure = {...saved.pressure};
     activePacing = {...saved.activePacing, maxSmall: saved.activePacing.maxSmall ?? initialPacing.maxSmall};
-    routes.clear(); gameOver = false; lastFrame = 0;
+    routes.clear(); wakes.clear(); gameOver = false; lastFrame = 0;
     updateScore(); render();
     return true;
   }
@@ -723,6 +774,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     restore,
     destroy() {
       pause(); destroyed = true;
+      wakes.clear();
       canvas.removeEventListener('pointerdown', pointerDown);
       canvas.removeEventListener('pointermove', pointerMove);
       canvas.removeEventListener('pointerup', pointerUp);
