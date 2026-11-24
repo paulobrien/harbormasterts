@@ -34,7 +34,7 @@ try {
   let source = await readFile('src/game.ts', 'utf8');
   const marker = '  reset();\n  render();\n  return {';
   assert.ok(source.includes(marker), 'game test seam exists');
-  source = source.replace(marker, `  reset();\n  render();\n  (globalThis as any).__realLevelTest = {level, update, reset, spawn, shoreContact, insidePolygon, enableSpawns:()=>{pressure=initialPressure(pressureConfig)}, stopSpawns:()=>{pressure={...pressure,phase:0,threshold:1e9,spawnElapsed:-999999}}, getShips:()=>ships, pushShip:(s:any)=>ships.push(s)};\n  return {`);
+  source = source.replace(marker, `  reset();\n  render();\n  (globalThis as any).__realLevelTest = {level, update, reset, spawn, shoreContact, insidePolygon, nearestShore, enableSpawns:()=>{pressure=initialPressure(pressureConfig)}, stopSpawns:()=>{pressure={...pressure,phase:0,threshold:1e9,spawnElapsed:-999999}}, getShips:()=>ships, pushShip:(s:any)=>ships.push(s)};\n  return {`);
   const outfile = join(dir, 'game.cjs');
   await build({stdin:{contents:source,sourcefile:'game.ts',resolveDir:resolve('src'),loader:'ts'},outfile,bundle:true,platform:'node',format:'cjs',logLevel:'silent'});
   const {createGame} = await import(pathToFileURL(outfile).href);
@@ -78,6 +78,21 @@ try {
     assert.equal(t.level.docks.length, 6,'the supplied HD map contains six docks');
     assert.equal(t.level.pacing.find(p=>p.from===0).allowMultiCargo,false,'the first original pacing stage uses single-colour boats');
     assert.equal(t.level.pacing.find(p=>p.from===16).allowMultiCargo,true,'the score-16 original pacing stage enables mixed cargo');
+    for (const [idx, x, y, angle] of [[4,680,460,Math.PI],[5,230,350,0]]) for(const size of [0,1,2]) {
+      reset();
+      const dock=t.level.docks[idx];
+      const ship={id:70+idx,x,y,cargoType:dock.cargo,cargo:[1,2,4][size],size,angle,speed:[40,20,10][size],state:'sailing',path:[],dock:null,unloadTime:0,entered:true};
+      assert.equal(t.level.land.some(p=>t.insidePolygon(ship,p)),false,'test boat starts in water');
+      t.pushShip(ship);route(ship,dock);
+      assert.equal(ship.targetDock,null,`dock ${idx+1}, size ${size}: cannot snap through the central island`);
+      assert.ok(ship.path.length,`dock ${idx+1}, size ${size}: the safe part of the route is retained`);
+      for(let n=0;n<900;n++){
+        t.update(1/60);
+        const inside=t.level.land.some(p=>t.insidePolygon(ship,p) && t.nearestShore(ship,p).distanceSquared>1e-10);
+        assert.equal(inside,false,`dock ${idx+1}, size ${size}, frame ${n}: boat remains outside the island`);
+      }
+      assert.equal(score,0,`dock ${idx+1}, size ${size}: the obstructed route does not deliver cargo`);
+    }
   }
   for (let idx=0;idx<t.level.docks.length;idx++) {
     for (const size of [0,1,2]) {

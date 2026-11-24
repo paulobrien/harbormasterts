@@ -111,3 +111,46 @@ test('a mixed-cargo boat can unload and continue to a second dock', async ({ pag
   await page.getByRole('button', { name: 'Resume', exact: true }).click();
   await expect(page.locator('#score')).toHaveText('2', {timeout: 10000});
 });
+
+test('dragging to a dock across an island stops at the shore', async ({ page, context }, testInfo) => {
+  // The square island is synthetic; the dock sits on its left-hand shore.
+  const level = `${syntheticLevel}landElement\n4\n0 100\n100 100\n100 0\n0 0\n`;
+  await page.route('**/game/harbor-hd-assets.zip', route => route.fulfill({
+    status: 200, contentType: 'application/zip', body: syntheticGame(level),
+  }));
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: /Play Treasure Island/ })).toBeVisible();
+  await page.evaluate(fingerprint => {
+    localStorage.setItem('harbor-auto-dock', '0');
+    localStorage.setItem('harbor-master-saved-shift-v1', JSON.stringify({
+      version: 1, levelFingerprint: fingerprint, shiftId: 'shoreline-browser',
+      score: 0, nextId: 1, elapsed: 0, spawnIn: 0, lastWarning: 0,
+      pressure: {phase: 0, phaseElapsed: 0, spawnElapsed: 0, threshold: 1},
+      activePacing: {from: 0, interval: 9999, maxSmall: 1, maxMedium: 0, maxLarge: 0},
+      ships: [{id: 0, x: 700, y: 334, angle: Math.PI, speed: 0, size: 0,
+        cargoType: 0, cargo: 1, state: 'sailing', path: [], dockIndex: null,
+        targetDockIndex: null, unloadTime: 0, entered: true}],
+    }));
+  }, fingerprintLevel(level));
+  await page.reload();
+  await page.getByRole('button', {name: /Continue shift/}).click();
+  const box = await page.getByLabel('Treasure Island harbor game').boundingBox();
+  if (!box) throw new Error('Game canvas is not visible');
+  const point = (x: number, y: number) => ({x: box.x + x / 1024 * box.width, y: box.y + y / 768 * box.height});
+  const start = point(700, 334), end = point(512, 334);
+  if (testInfo.project.name === 'desktop') {
+    await page.mouse.move(start.x, start.y); await page.mouse.down();
+    await page.mouse.move(end.x, end.y); await page.mouse.up();
+  } else {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [start]});
+    await cdp.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: [end]});
+    await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+    await cdp.detach();
+  }
+  await page.getByRole('button', {name: 'Pause', exact: true}).click();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('harbor-master-saved-shift-v1') || '{}'));
+  expect(saved.ships[0].targetDockIndex).toBeNull();
+  expect(saved.ships[0].path.length).toBeGreaterThan(0);
+  expect(saved.ships[0].path.at(-1).x).toBeGreaterThanOrEqual(611.99);
+});

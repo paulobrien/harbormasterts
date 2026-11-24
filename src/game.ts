@@ -114,13 +114,44 @@ function insidePolygon(p: Point, polygon: Point[]): boolean {
   return inside;
 }
 
+/** Closest shoreline point, used to distinguish a dock departure from a
+ * gesture that starts on the boundary and heads into land. */
+function nearestShore(point: Point, polygon: Point[]): {point: Point; distanceSquared: number} {
+  let nearest = {point: polygon[0], distanceSquared: Infinity};
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i], b = polygon[(i + 1) % polygon.length];
+    const dx = b.x - a.x, dy = b.y - a.y, lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared < 1e-18) continue;
+    const t = clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared, 0, 1);
+    const closest = {x: a.x + t * dx, y: a.y + t * dy};
+    const distanceSquared = (point.x - closest.x) ** 2 + (point.y - closest.y) ** 2;
+    if (distanceSquared < nearest.distanceSquared) nearest = {point: closest, distanceSquared};
+  }
+  return nearest;
+}
+
 /** Clip a player's route to the first shoreline it crosses. */
 function clipSegment(start: Point, end: Point, polygons: Point[][]): Point | null {
   const rx = end.x - start.x, ry = end.y - start.y;
+  const length = Math.hypot(rx, ry);
+  if (length < 1e-9) return null;
   let earliest = Infinity;
   for (const polygon of polygons) {
-    // Departing docks can begin within the shore boundary; allow a path out.
-    if (insidePolygon(start, polygon)) continue;
+    const nearest = nearestShore(start, polygon);
+    const onBoundary = nearest.distanceSquared < 1e-12;
+    const startsInside = !onBoundary && insidePolygon(start, polygon);
+    if (onBoundary) {
+      // The ray-casting test assigns boundary points inconsistently. Look just
+      // ahead instead, so a dock on the shore can leave but not enter land.
+      const probe = {x: start.x + rx / length * 1e-4, y: start.y + ry / length * 1e-4};
+      if (insidePolygon(probe, polygon) && nearestShore(probe, polygon).distanceSquared >= 1e-12) return {...start};
+    } else if (startsInside) {
+      // A previously saved boat can already be inside land. Permit it to head
+      // toward the nearest shore, but never farther into the polygon.
+      const toShore = {x: nearest.point.x - start.x, y: nearest.point.y - start.y};
+      if (rx * toShore.x + ry * toShore.y <= 0) return {...start};
+    }
+    const crossings: number[] = [];
     for (let i = 0; i < polygon.length; i++) {
       const a = polygon[i], b = polygon[(i + 1) % polygon.length];
       const sx = b.x - a.x, sy = b.y - a.y;
@@ -129,16 +160,21 @@ function clipSegment(start: Point, end: Point, polygons: Point[][]): Point | nul
       const qx = a.x - start.x, qy = a.y - start.y;
       const t = (qx * sy - qy * sx) / denominator;
       const u = (qx * ry - qy * rx) / denominator;
-      if (t > .0001 && t <= 1 && u >= 0 && u <= 1) earliest = Math.min(earliest, t);
+      if (t > 1e-9 && t <= 1 && u >= 0 && u <= 1) crossings.push(t);
     }
+    crossings.sort((a, b) => a - b);
+    // Starting inside is only allowed as an escape. Ignore the first exit,
+    // while still stopping a segment that re-enters a concave shoreline.
+    const distinct = crossings.filter((t, i) => i === 0 || t - crossings[i - 1] > 1e-9);
+    if (distinct[startsInside ? 1 : 0] !== undefined) earliest = Math.min(earliest, distinct[startsInside ? 1 : 0]);
   }
   return Number.isFinite(earliest) ? {x: start.x + rx * earliest, y: start.y + ry * earliest} : null;
 }
 
 /** Find the first shoreline crossed by the boat's center during this frame. */
-function shoreContact(start: Point, end: Point, polygon: Point[]): {nx: number; ny: number} | null {
+function shoreContact(start: Point, end: Point, polygon: Point[]): {nx: number; ny: number; t: number} | null {
   const rx = end.x - start.x, ry = end.y - start.y;
-  let earliest = Infinity, normal: {nx: number; ny: number} | null = null;
+  let earliest = Infinity, normal: {nx: number; ny: number; t: number} | null = null;
   for (let i = 0; i < polygon.length; i++) {
     const a = polygon[i], b = polygon[(i + 1) % polygon.length];
     const sx = b.x - a.x, sy = b.y - a.y;
@@ -156,7 +192,7 @@ function shoreContact(start: Point, end: Point, polygon: Point[]): {nx: number; 
     // A boat leaving a berth on the boundary is allowed to move outward.
     if (rx * nx + ry * ny >= -1e-9) continue;
     earliest = t;
-    normal = {nx, ny};
+    normal = {nx, ny, t};
   }
   return normal;
 }
@@ -366,6 +402,41 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     callbacks.onGameOver?.(score);
   }
 
+  function firstShoreContact(start: Point, end: Point, dock?: Dock | null) {
+    let first: ReturnType<typeof shoreContact> = null;
+    for (const polygon of level.land) {
+      let contact = shoreContact(start, end, polygon);
+      // Old saved shifts can contain a boat inside land. Let it escape, but
+      // reflect an incoming heading back toward the nearest shoreline.
+      if (insidePolygon(start, polygon)) {
+        const nearest = nearestShore(start, polygon);
+        const length = Math.sqrt(nearest.distanceSquared);
+        if (length > 1e-6) {
+          const nx = (nearest.point.x - start.x) / length, ny = (nearest.point.y - start.y) / length;
+          if ((end.x - start.x) * nx + (end.y - start.y) * ny < -1e-9) contact = {nx, ny, t: 0};
+        }
+      }
+      if (!contact || (dock && distance(end, dock) < 1e-7 && contact.t >= 1 - 1e-8)) continue;
+      if (!first || contact.t < first.t) first = contact;
+    }
+    return first;
+  }
+
+  function bounceFromShore(ship: Ship, start: Point, end: Point, contact: NonNullable<ReturnType<typeof shoreContact>>) {
+    const length = distance(start, end);
+    const vx = (end.x - start.x) / length, vy = (end.y - start.y) / length;
+    const intoLand = vx * contact.nx + vy * contact.ny;
+    ship.x = start.x;
+    ship.y = start.y;
+    ship.angle = Math.atan2(vy - 2 * intoLand * contact.ny, vx - 2 * intoLand * contact.nx);
+    ship.path.length = 0;
+    ship.targetDock = null;
+    if (ship.dock?.occupant === ship.id) ship.dock.occupant = null;
+    ship.dock = null;
+    ship.state = 'sailing';
+    callbacks.onStatus?.('The boat bounced off the shore. Draw a new route.');
+  }
+
   function update(dt: number) {
     ageWakes(dt);
     if (routeFlash) {
@@ -417,8 +488,12 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
         const remaining = distance(ship, dock);
         const step = Math.min(remaining, ship.speed * dt);
         if (remaining > 0) {
-          ship.x += (dock.x - ship.x) / remaining * step;
-          ship.y += (dock.y - ship.y) / remaining * step;
+          const next = {x: ship.x + (dock.x - ship.x) / remaining * step,
+            y: ship.y + (dock.y - ship.y) / remaining * step};
+          const contact = firstShoreContact(previous, next, dock);
+          if (contact) { bounceFromShore(ship, previous, next, contact); continue; }
+          ship.x = next.x;
+          ship.y = next.y;
         }
         leaveWake(ship, previous, dt);
         if (remaining <= step + .01) {
@@ -465,6 +540,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
       }
       if (ship.state === 'waiting') continue;
       const previous = { x: ship.x, y: ship.y };
+      const traveled: {start: Point; end: Point}[] = [];
       // The original advances the boat along the actual path, consuming
       // speed × elapsed time across as many path segments as necessary. Its
       // heading turns separately; steering the velocity toward each waypoint
@@ -480,14 +556,30 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
         const turn = Math.atan2(Math.sin(direction - ship.angle), Math.cos(direction - ship.angle));
         const maxTurn = [120, 40, 10][ship.size] * Math.PI / 180;
         ship.angle += clamp(turn, -maxTurn * step / ship.speed, maxTurn * step / ship.speed);
+        const start = {x: ship.x, y: ship.y};
         ship.x += dx / length * step;
         ship.y += dy / length * step;
+        if (step > 0) traveled.push({start, end: {x: ship.x, y: ship.y}});
         remainingTravel -= step;
         if (length - step < 1e-8) ship.path.shift();
       }
       if (remainingTravel > 0 && !ship.path.length && !ship.targetDock) {
+        const start = {x: ship.x, y: ship.y};
         ship.x += Math.cos(ship.angle) * remainingTravel;
         ship.y += Math.sin(ship.angle) * remainingTravel;
+        traveled.push({start, end: {x: ship.x, y: ship.y}});
+      }
+
+      // A frame can consume several short route segments. Testing only the
+      // straight line between the frame's endpoints can miss an excursion
+      // into land followed by a turn back to water.
+      let hitShore = false;
+      for (const segment of traveled) {
+        const contact = firstShoreContact(segment.start, segment.end, ship.targetDock);
+        if (!contact) continue;
+        bounceFromShore(ship, segment.start, segment.end, contact);
+        hitShore = true;
+        break;
       }
 
       // While following a curve the rendered heading may lag behind the
@@ -509,40 +601,21 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
       // Auto-docking is a separate convenience in the original app. A ship
       // should not divert from an unrelated route just because it sails near a
       // berth, and should never auto-dock while its path is being edited.
-      if (ship.cargo > 0 && (ship.targetDock || ![...routes.values()].some(route => route.ship === ship))) {
+      if (!hitShore && ship.cargo > 0 && (ship.targetDock || ![...routes.values()].some(route => route.ship === ship))) {
         const activeTarget = ship.targetDock;
         const canAutoDock = autoDockEnabled && !activeTarget && ship.path.length === 0 && !ship.warning;
         const dock = level.docks.find(candidate => {
           if (!hasCargoFor(ship, candidate.cargo) || candidate.occupant !== null) return false;
           if (activeTarget) return activeTarget === candidate && ship.path.length === 0 && distance(ship, candidate) < .01;
-          return canAutoDock && distance(ship, dockApproach(candidate, 20)) < 24;
+          if (!canAutoDock || distance(ship, dockApproach(candidate, 20)) >= 24) return false;
+          const clipped = clipSegment(ship, candidate, level.land);
+          return !clipped || distance(clipped, candidate) < 1e-7;
         });
         if (dock) {
           ship.dock = dock;
           ship.targetDock = null;
           ship.state = 'docking';
           ship.path.length = 0;
-        }
-      }
-      if (ship.state === 'sailing' && !(ship.targetDock && ship.path.length <= 2)) {
-        // Dock mouths sit next to the land polygon, so a valid docking approach
-        // takes precedence. The original HD simulation reflects ships off
-        // land, clears their path and keeps the game going.
-        for (const polygon of level.land) {
-          const contact = shoreContact(previous, ship, polygon);
-          if (!contact) continue;
-          const vx = motionX, vy = motionY;
-          const intoLand = vx * contact.nx + vy * contact.ny;
-          // A boat leaving an occupied berth is already near shore: permit it
-          // to move away rather than bouncing it back into the dock.
-          if (intoLand >= -0.001) continue;
-          ship.x = previous.x;
-          ship.y = previous.y;
-          ship.angle = Math.atan2(vy - 2 * intoLand * contact.ny, vx - 2 * intoLand * contact.nx);
-          ship.path.length = 0;
-          ship.targetDock = null;
-          callbacks.onStatus?.('The boat bounced off the shore. Draw a new route.');
-          break;
         }
       }
       leaveWake(ship, previous, dt);
@@ -754,18 +827,28 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     }
     ship.state = 'sailing';
   }
+  function appendClippedSegments(route: ActiveRoute, points: Point[], dock?: Dock): boolean {
+    for (const [index, point] of points.entries()) {
+      const start = route.draft[route.draft.length - 1] || route.ship;
+      let clipped = clipSegment(start, point, level.land);
+      // A berth may lie exactly on the shore; reaching that endpoint is not
+      // the same as drawing through the land behind it.
+      if (clipped && dock && index === points.length - 1 && distance(clipped, dock) < 1e-7) clipped = null;
+      const end = clipped || point;
+      if (distance(start, end) > 1e-8) {
+        if (route.ship.state === 'waiting') departDock(route.ship);
+        route.draft.push(end);
+      }
+      if (clipped) { route.blocked = true; return false; }
+    }
+    return true;
+  }
   function appendRoutePoint(route: ActiveRoute, point: Point) {
     if (route.blocked) return;
     const previous = route.draft[route.draft.length - 1] || route.ship;
     // The HD controller tests the dock target before clipping against land.
     const target = drawnDock(route.ship, point);
     if (target) {
-      // A partly unloaded boat can leave one berth and snap directly to the
-      // next matching dock during the same gesture.
-      departDock(route.ship);
-      routeFlash = { x: target.x, y: target.y, age: 0 };
-      route.targetDock = target;
-      route.ship.targetDock = target;
       // The native app removes at least two tail points, backing up about 16
       // units when possible, then curves into a size-specific approach point
       // and finishes at the center of the dock.
@@ -786,8 +869,13 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
       const direction = length > 1e-9 ? {x: dx / length, y: dy / length} : heading;
       const approach = dockApproach(target, [2, 5, 10][route.ship.size]);
       const dockAngle = -target.angle * Math.PI / 180;
-      route.draft.push(...sampleNativeCurve(start, direction, approach,
-        {x: Math.cos(dockAngle), y: Math.sin(dockAngle)}), {x: target.x, y: target.y});
+      const pointsToDock = [...sampleNativeCurve(start, direction, approach,
+        {x: Math.cos(dockAngle), y: Math.sin(dockAngle)}), {x: target.x, y: target.y}];
+      if (appendClippedSegments(route, pointsToDock, target)) {
+        routeFlash = { x: target.x, y: target.y, age: 0 };
+        route.targetDock = target;
+        route.ship.targetDock = target;
+      }
       route.blocked = true;
       route.lastTouch = point;
       return;
@@ -807,16 +895,7 @@ export function createGame(canvas: HTMLCanvasElement, assets: GameAssets, callba
     const candidates = !route.draft.length && route.ship.state !== 'waiting'
       ? (distance(previous, point) > 25 ? [{...point}] : [])
       : nativeTouchSegment(previous, point, startDirection, endDirection);
-    if (candidates.length && route.ship.state === 'waiting') {
-      // A ready vessel departs as soon as a route exists, while drawing.
-      departDock(route.ship);
-    }
-    for (const candidate of candidates) {
-      const start = route.draft[route.draft.length - 1] || route.ship;
-      const clipped = clipSegment(start, candidate, level.land);
-      route.draft.push(clipped || candidate);
-      if (clipped) { route.blocked = true; break; }
-    }
+    appendClippedSegments(route, candidates);
     route.lastTouch = point;
   }
   function pointerMove(event: PointerEvent) {
